@@ -1,0 +1,141 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+
+    SPDX-License-Identifier: Apache-2.0
+    Copyright 2026 Shebang Labs
+
+-->
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+                   http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.20.xsd">
+
+  <!-- Never edit a released changeSet: add a new one instead. -->
+
+  <changeSet author="scim-outbound-for-keycloak" id="scim-outbound-1.0.0-tables">
+    <createTable tableName="SCIM_OUTBOUND_TARGET">
+      <column name="ID" type="VARCHAR(36)">
+        <constraints primaryKey="true" primaryKeyName="PK_SCIM_OUT_TARGET" nullable="false"/>
+      </column>
+      <column name="REALM_ID" type="VARCHAR(36)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="NAME" type="VARCHAR(64)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="ENABLED" type="BOOLEAN" defaultValueBoolean="true">
+        <constraints nullable="false"/>
+      </column>
+      <column name="CONFIG" type="VARCHAR(4000)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="RECONCILE_ARMED" type="BOOLEAN" defaultValueBoolean="false">
+        <constraints nullable="false"/>
+      </column>
+      <column name="LAST_RECONCILE_AT" type="BIGINT"/>
+      <column name="LAST_RECONCILE_SUMMARY" type="VARCHAR(4000)"/>
+      <column name="CREATED_AT" type="BIGINT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="UPDATED_AT" type="BIGINT">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+    <addUniqueConstraint tableName="SCIM_OUTBOUND_TARGET" columnNames="REALM_ID, NAME"
+                         constraintName="UK_SCIM_OUT_TARGET_NAME"/>
+
+    <createTable tableName="SCIM_OUTBOUND_OUTBOX">
+      <column name="ID" type="VARCHAR(36)">
+        <constraints primaryKey="true" primaryKeyName="PK_SCIM_OUT_OUTBOX" nullable="false"/>
+      </column>
+      <column name="REALM_ID" type="VARCHAR(36)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="TARGET_ID" type="VARCHAR(36)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="RESOURCE_TYPE" type="VARCHAR(16)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="RESOURCE_ID" type="VARCHAR(36)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="RELATED_ID" type="VARCHAR(36)"/>
+      <column name="OPERATION" type="VARCHAR(32)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="STATUS" type="VARCHAR(16)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="PRIORITY" type="INT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="ATTEMPTS" type="INT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="NEXT_ATTEMPT_AT" type="BIGINT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="RETRY_UNTIL" type="BIGINT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="CLAIMED_AT" type="BIGINT"/>
+      <column name="CREATED_AT" type="BIGINT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="UPDATED_AT" type="BIGINT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="LAST_ERROR" type="VARCHAR(1000)"/>
+    </createTable>
+    <createIndex tableName="SCIM_OUTBOUND_OUTBOX" indexName="IDX_SCIM_OUT_OUTBOX_DUE">
+      <column name="STATUS"/>
+      <column name="NEXT_ATTEMPT_AT"/>
+    </createIndex>
+    <createIndex tableName="SCIM_OUTBOUND_OUTBOX" indexName="IDX_SCIM_OUT_OUTBOX_OBJ">
+      <column name="TARGET_ID"/>
+      <column name="RESOURCE_TYPE"/>
+      <column name="RESOURCE_ID"/>
+    </createIndex>
+    <createIndex tableName="SCIM_OUTBOUND_OUTBOX" indexName="IDX_SCIM_OUT_OUTBOX_REALM">
+      <column name="REALM_ID"/>
+    </createIndex>
+
+    <createTable tableName="SCIM_OUTBOUND_ID_MAP">
+      <column name="ID" type="VARCHAR(36)">
+        <constraints primaryKey="true" primaryKeyName="PK_SCIM_OUT_ID_MAP" nullable="false"/>
+      </column>
+      <column name="REALM_ID" type="VARCHAR(36)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="TARGET_ID" type="VARCHAR(36)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="RESOURCE_TYPE" type="VARCHAR(16)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="LOCAL_ID" type="VARCHAR(36)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="REMOTE_ID" type="VARCHAR(255)">
+        <constraints nullable="false"/>
+      </column>
+      <column name="CREATED_AT" type="BIGINT">
+        <constraints nullable="false"/>
+      </column>
+      <column name="UPDATED_AT" type="BIGINT">
+        <constraints nullable="false"/>
+      </column>
+    </createTable>
+    <addUniqueConstraint tableName="SCIM_OUTBOUND_ID_MAP" columnNames="TARGET_ID, RESOURCE_TYPE, LOCAL_ID"
+                         constraintName="UK_SCIM_OUT_ID_MAP_LOCAL"/>
+    <createIndex tableName="SCIM_OUTBOUND_ID_MAP" indexName="IDX_SCIM_OUT_ID_MAP_REMOTE">
+      <column name="TARGET_ID"/>
+      <column name="RESOURCE_TYPE"/>
+      <column name="REMOTE_ID"/>
+    </createIndex>
+    <createIndex tableName="SCIM_OUTBOUND_ID_MAP" indexName="IDX_SCIM_OUT_ID_MAP_REALM">
+      <column name="REALM_ID"/>
+    </createIndex>
+  </changeSet>
+</databaseChangeLog>
