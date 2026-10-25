@@ -1,0 +1,28 @@
+# Build output
+target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+dependency-reduced-pom.xml
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local environment and secrets
+.env
+*.env.local
+demo/vault/*
+!demo/vault/.gitkeep
+*.p12
+*.jks
+*.pem
