@@ -4,14 +4,17 @@
  */
 package io.shebanglabs.scimoutbound.events;
 
+import io.shebanglabs.scimoutbound.spi.ScimOutboundProvider;
 import org.keycloak.events.Event;
 import org.keycloak.events.EventListenerProvider;
 import org.keycloak.events.admin.AdminEvent;
 import org.keycloak.models.KeycloakSession;
+import org.keycloak.models.RealmModel;
 
 /**
  * Receives user and admin events. It never performs network I/O: relevant changes are only
- * recorded in the outbox inside the current transaction.
+ * recorded in the outbox inside the current transaction, so they commit or roll back together
+ * with the change itself.
  */
 public class ScimEventListenerProvider implements EventListenerProvider {
 
@@ -23,16 +26,23 @@ public class ScimEventListenerProvider implements EventListenerProvider {
 
     @Override
     public void onEvent(Event event) {
-        // wired to the outbox in a later step
+        EventInterpreter.fromUserEvent(event.getType(), event.getUserId(), event.getError())
+                .ifPresent(change -> record(event.getRealmId(), change));
     }
 
     @Override
     public void onEvent(AdminEvent event, boolean includeRepresentation) {
-        // wired to the outbox in a later step
+        EventInterpreter.fromAdminEvent(event.getResourceType(), event.getOperationType(), event.getResourcePath(),
+                includeRepresentation ? event.getRepresentation() : null, event.getError())
+                .ifPresent(change -> record(event.getRealmId(), change));
     }
 
-    KeycloakSession session() {
-        return session;
+    private void record(String realmId, Change change) {
+        RealmModel realm = realmId == null ? null : session.realms().getRealm(realmId);
+        ScimOutboundProvider provider = session.getProvider(ScimOutboundProvider.class);
+        if (provider != null) {
+            provider.record(realm, change);
+        }
     }
 
     @Override
