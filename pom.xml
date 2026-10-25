@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  SPDX-License-Identifier: Apache-2.0
-  Copyright 2026 Shebang Labs
+
+    SPDX-License-Identifier: Apache-2.0
+    Copyright 2026 Shebang Labs
+
 -->
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -78,6 +80,7 @@
     <cyclonedx-maven-plugin.version>2.9.1</cyclonedx-maven-plugin.version>
     <jacoco-maven-plugin.version>0.8.14</jacoco-maven-plugin.version>
 
+    <license.year>2026</license.year>
     <skipITs>false</skipITs>
   </properties>
 
@@ -203,6 +206,43 @@
     </pluginManagement>
 
     <plugins>
+      <plugin>
+        <groupId>com.mycila</groupId>
+        <artifactId>license-maven-plugin</artifactId>
+        <version>${license-maven-plugin.version}</version>
+        <configuration>
+          <properties>
+            <license.year>${license.year}</license.year>
+          </properties>
+          <licenseSets>
+            <licenseSet>
+              <header>src/license/header.txt</header>
+              <includes>
+                <include>src/**/*.java</include>
+                <include>src/**/*.xml</include>
+                <include>pom.xml</include>
+              </includes>
+              <excludes>
+                <exclude>src/license/**</exclude>
+                <exclude>src/test/resources/**/*.json</exclude>
+              </excludes>
+            </licenseSet>
+          </licenseSets>
+          <mapping>
+            <java>SLASHSTAR_STYLE</java>
+          </mapping>
+          <strictCheck>true</strictCheck>
+        </configuration>
+        <executions>
+          <execution>
+            <id>check-license-headers</id>
+            <phase>validate</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
