@@ -245,6 +245,51 @@
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>${maven-enforcer-plugin.version}</version>
+        <executions>
+          <execution>
+            <id>enforce-build-rules</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <rules>
+                <requireJavaVersion>
+                  <version>[21,)</version>
+                </requireJavaVersion>
+                <requireMavenVersion>
+                  <version>[3.9,)</version>
+                </requireMavenVersion>
+                <!-- Keycloak already ships these: they must never end up in our jar. -->
+                <bannedDependencies>
+                  <excludes>
+                    <exclude>org.keycloak:*</exclude>
+                    <exclude>com.fasterxml.jackson.core:*</exclude>
+                    <exclude>org.apache.httpcomponents:*</exclude>
+                    <exclude>org.jboss.logging:*</exclude>
+                    <exclude>jakarta.persistence:*</exclude>
+                    <exclude>jakarta.ws.rs:*</exclude>
+                  </excludes>
+                  <includes>
+                    <include>org.keycloak:*:*:*:provided</include>
+                    <include>com.fasterxml.jackson.core:*:*:*:provided</include>
+                    <include>org.apache.httpcomponents:*:*:*:provided</include>
+                    <include>org.jboss.logging:*:*:*:provided</include>
+                    <include>jakarta.persistence:*:*:*:provided</include>
+                    <include>jakarta.ws.rs:*:*:*:provided</include>
+                    <include>*:*:*:*:test</include>
+                  </includes>
+                  <searchTransitive>true</searchTransitive>
+                </bannedDependencies>
+                <dependencyConvergence/>
+              </rules>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
       </plugin>
       <plugin>
