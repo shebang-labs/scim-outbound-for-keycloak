@@ -26,19 +26,24 @@ public final class ScimStubs {
     public static void install(WireMock scim) {
         scim.resetToDefaultMappings();
         scim.resetRequests();
-        scim.register(get("/scim/v2/ServiceProviderConfig").willReturn(aResponse().withStatus(200)
+        installAt(scim, "/scim/v2");
+    }
+
+    /** Adds the stubs under another base path without resetting, to simulate several targets. */
+    public static void installAt(WireMock scim, String base) {
+        scim.register(get(base + "/ServiceProviderConfig").willReturn(aResponse().withStatus(200)
                 .withHeader("Content-Type", "application/scim+json")
                 .withBody("{\"patch\":{\"supported\":true},\"filter\":{\"supported\":true,\"maxResults\":100}}")));
-        scim.register(get(urlPathEqualTo("/scim/v2/Users")).willReturn(list()));
-        scim.register(get(urlPathEqualTo("/scim/v2/Groups")).willReturn(list()));
-        scim.register(post("/scim/v2/Users").willReturn(aResponse().withStatus(201)
+        scim.register(get(urlPathEqualTo(base + "/Users")).willReturn(list()));
+        scim.register(get(urlPathEqualTo(base + "/Groups")).willReturn(list()));
+        scim.register(post(base + "/Users").willReturn(aResponse().withStatus(201)
                 .withHeader("Content-Type", "application/scim+json")
                 .withBody("{\"id\":\"u-{{jsonPath request.body '$.userName'}}\","
                         + "\"userName\":\"{{jsonPath request.body '$.userName'}}\"}")));
-        scim.register(post("/scim/v2/Groups").willReturn(aResponse().withStatus(201)
+        scim.register(post(base + "/Groups").willReturn(aResponse().withStatus(201)
                 .withHeader("Content-Type", "application/scim+json")
                 .withBody("{\"id\":\"g-{{jsonPath request.body '$.displayName'}}\"}")));
-        scim.register(any(urlMatching("/scim/v2/(Users|Groups)/.+")).atPriority(10)
+        scim.register(any(urlMatching(base + "/(Users|Groups)/.+")).atPriority(10)
                 .willReturn(aResponse().withStatus(204)));
     }
 

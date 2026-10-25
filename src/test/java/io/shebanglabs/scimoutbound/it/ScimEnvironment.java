@@ -118,7 +118,12 @@ public final class ScimEnvironment implements AutoCloseable {
 
     /** Creates a bearer-token target pointing at WireMock and returns its id. */
     public String createTarget(String realm, String name, String extraJson) {
-        String body = "{\"name\":\"" + name + "\",\"baseUrl\":\"" + SCIM_BASE + "\","
+        return createTarget(realm, name, SCIM_BASE, extraJson);
+    }
+
+    /** Creates a bearer-token target with an explicit base URL and returns its id. */
+    public String createTarget(String realm, String name, String baseUrl, String extraJson) {
+        String body = "{\"name\":\"" + name + "\",\"baseUrl\":\"" + baseUrl + "\","
                 + "\"auth\":{\"type\":\"BEARER\",\"token\":\"test-token\"}"
                 + (extraJson == null || extraJson.isBlank() ? "" : "," + extraJson) + "}";
         ApiResponse response = api("POST", realm, "targets", body);
