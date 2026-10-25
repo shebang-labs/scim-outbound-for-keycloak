@@ -22,7 +22,8 @@ import java.io.UncheckedIOException;
 public final class ScimJson {
 
     private static final ObjectMapper MAPPER = JsonMapper.builder()
-            .serializationInclusion(JsonInclude.Include.NON_NULL)
+            .defaultPropertyInclusion(JsonInclude.Value.construct(JsonInclude.Include.NON_NULL,
+                    JsonInclude.Include.NON_NULL))
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION)
             .build();
