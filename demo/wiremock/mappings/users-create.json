@@ -1,0 +1,8 @@
+{
+  "request": { "method": "POST", "url": "/scim/v2/Users" },
+  "response": {
+    "status": 201,
+    "headers": { "Content-Type": "application/scim+json" },
+    "body": "{\"schemas\":[\"urn:ietf:params:scim:schemas:core:2.0:User\"],\"id\":\"demo-{{jsonPath request.body '$.userName'}}\",\"userName\":\"{{jsonPath request.body '$.userName'}}\",\"active\":true}"
+  }
+}

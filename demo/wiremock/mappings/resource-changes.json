@@ -1,0 +1,5 @@
+{
+  "priority": 10,
+  "request": { "urlPattern": "/scim/v2/(Users|Groups)/.+" },
+  "response": { "status": 204 }
+}

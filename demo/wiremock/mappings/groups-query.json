@@ -1,0 +1,12 @@
+{
+  "request": { "method": "GET", "urlPath": "/scim/v2/Groups" },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/scim+json" },
+    "jsonBody": {
+      "schemas": ["urn:ietf:params:scim:api:messages:2.0:ListResponse"],
+      "totalResults": 0,
+      "Resources": []
+    }
+  }
+}

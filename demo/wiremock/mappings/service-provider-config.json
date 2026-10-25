@@ -1,0 +1,14 @@
+{
+  "request": { "method": "GET", "url": "/scim/v2/ServiceProviderConfig" },
+  "response": {
+    "status": 200,
+    "headers": { "Content-Type": "application/scim+json" },
+    "jsonBody": {
+      "schemas": ["urn:ietf:params:scim:schemas:core:2.0:ServiceProviderConfig"],
+      "patch": { "supported": true },
+      "filter": { "supported": true, "maxResults": 100 },
+      "bulk": { "supported": false },
+      "etag": { "supported": false }
+    }
+  }
+}
