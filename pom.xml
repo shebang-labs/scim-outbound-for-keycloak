@@ -122,6 +122,13 @@
       <version>${keycloak.version}</version>
       <scope>provided</scope>
     </dependency>
+    <!-- ClusterAwareScheduledTaskRunner lives here (normally only a transitive dependency). -->
+    <dependency>
+      <groupId>org.keycloak</groupId>
+      <artifactId>keycloak-model-storage-private</artifactId>
+      <version>${keycloak.version}</version>
+      <scope>provided</scope>
+    </dependency>
 
     <!-- Tests -->
     <dependency>
