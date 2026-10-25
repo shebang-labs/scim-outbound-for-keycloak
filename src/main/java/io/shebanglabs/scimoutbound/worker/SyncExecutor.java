@@ -290,7 +290,18 @@ public class SyncExecutor {
             return;
         }
         String id = group.remoteId() != null ? group.remoteId() : ensureGroup(group);
-        replaceMembers(id, group, group.memberRemoteIds());
+        try {
+            replaceMembers(id, group, group.memberRemoteIds());
+        } catch (ScimException e) {
+            if (e.response().map(r -> r.outcome() == Outcome.NOT_FOUND).orElse(false) && group.remoteId() != null) {
+                // removed on the target: create it again with the full member list
+                changes.add(MappingChange.unlink(ResourceType.GROUP, group.groupId()));
+                ensureGroup(new GroupState(group.groupId(), group.displayName(), true, null,
+                        group.memberRemoteIds()));
+                return;
+            }
+            throw e;
+        }
     }
 
     private void replaceMembers(String remoteId, GroupState group, List<String> memberRemoteIds)
