@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/shebang-labs/scim-outbound-for-keycloak/security/advisories/new
+    about: Please report security issues privately, never in public issues.
+  - name: Questions and ideas
+    url: https://github.com/shebang-labs/scim-outbound-for-keycloak/discussions
+    about: Ask questions and discuss ideas with the community.
