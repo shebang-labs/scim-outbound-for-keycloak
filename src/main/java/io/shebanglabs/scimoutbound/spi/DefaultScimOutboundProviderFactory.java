@@ -10,6 +10,7 @@ import io.shebanglabs.scimoutbound.config.ServerConfig;
 import io.shebanglabs.scimoutbound.config.TargetValidator;
 import io.shebanglabs.scimoutbound.events.ModelEventListener;
 import io.shebanglabs.scimoutbound.http.ScimHttp;
+import io.shebanglabs.scimoutbound.metrics.MicrometerScimMetrics;
 import io.shebanglabs.scimoutbound.metrics.ScimMetrics;
 import io.shebanglabs.scimoutbound.outbox.Backoff;
 import io.shebanglabs.scimoutbound.reconcile.ReconcileReport;
@@ -77,6 +78,7 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
         hostPolicy = new HostPolicy(serverConfig);
         tokenCache = new TokenCache(clock);
         capabilities = new CapabilitiesCache(clock);
+        metrics = MicrometerScimMetrics.createIfAvailable();
         LOG.infof("scim-outbound: worker every %ds, batch %d, reconcile every %d min, https-only=%s,"
                         + " private-addresses=%s, vault-only-secrets=%s, host allowlist=%s",
                 serverConfig.workerInterval().toSeconds(), serverConfig.batchSize(),
