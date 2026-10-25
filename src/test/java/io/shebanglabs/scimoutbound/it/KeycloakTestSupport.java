@@ -12,7 +12,7 @@ import org.testcontainers.images.PullPolicy;
  */
 public final class KeycloakTestSupport {
 
-    public static final String DEFAULT_IMAGE = "quay.io/keycloak/keycloak:26.8.0";
+    public static final String DEFAULT_IMAGE = "quay.io/keycloak/keycloak:26.8.1";
 
     private KeycloakTestSupport() {
     }
