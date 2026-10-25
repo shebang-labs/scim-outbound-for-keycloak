@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Local demo: Keycloak (with the plugin) + PostgreSQL + a WireMock "SCIM application".
+# Build the plugin first:  ./mvnw -DskipTests package
+# DEMO ONLY: plain http, private addresses and demo credentials are enabled here.
+name: scim-outbound-demo
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: keycloak
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  scim-app:
+    image: wiremock/wiremock:3.13.1
+    command: ["--global-response-templating", "--disable-banner", "--verbose"]
+    volumes:
+      - ./wiremock/mappings:/home/wiremock/mappings:ro
+    ports:
+      - "8081:8080"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.8.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      scim-app:
+        condition: service_started
+    command:
+      - start-dev
+      - --import-realm
+      - --metrics-enabled=true
+      - --vault=file
+      - --vault-dir=/opt/keycloak/vault
+      # the demo SCIM app is plain http on a private Docker network: never do this in production
+      - --spi-scim-outbound--default--allow-http=true
+      - --spi-scim-outbound--default--allow-private-addresses=true
+      - --spi-scim-outbound--default--worker-interval-seconds=2
+      - --log-level=INFO,io.shebanglabs.scimoutbound:debug
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: keycloak
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    volumes:
+      - ../target/scim-outbound-for-keycloak-0.1.0-SNAPSHOT.jar:/opt/keycloak/providers/scim-outbound-for-keycloak.jar:ro
+      - ./realm-demo.json:/opt/keycloak/data/import/realm-demo.json:ro
+      - ./vault:/opt/keycloak/vault:ro
+    ports:
+      - "8080:8080"
+      - "9000:9000"

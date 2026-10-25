@@ -21,8 +21,6 @@ Thumbs.db
 # Local environment and secrets
 .env
 *.env.local
-demo/vault/*
-!demo/vault/.gitkeep
 *.p12
 *.jks
 *.pem

@@ -1,0 +1,28 @@
+{
+  "realm": "demo",
+  "enabled": true,
+  "registrationAllowed": true,
+  "eventsListeners": ["jboss-logging", "scim-outbound"],
+  "groups": [
+    { "name": "engineering" },
+    { "name": "sales" }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "email": "alice@example.test",
+      "firstName": "Alice",
+      "lastName": "Example",
+      "enabled": true,
+      "groups": ["/engineering"]
+    },
+    {
+      "username": "bob",
+      "email": "bob@example.test",
+      "firstName": "Bob",
+      "lastName": "Example",
+      "enabled": true,
+      "groups": ["/sales"]
+    }
+  ]
+}
