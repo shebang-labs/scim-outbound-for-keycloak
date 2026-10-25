@@ -1,0 +1,31 @@
+version: 2
+updates:
+  - package-ecosystem: maven
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      test-dependencies:
+        patterns:
+          - "org.junit*"
+          - "org.assertj*"
+          - "org.mockito*"
+          - "org.testcontainers*"
+          - "org.wiremock*"
+          - "org.awaitility*"
+          - "com.github.dasniko*"
+      maven-plugins:
+        patterns:
+          - "org.apache.maven.plugins*"
+          - "org.jacoco*"
+          - "org.cyclonedx*"
+          - "com.mycila*"
+    ignore:
+      # Keycloak upgrades change the supported-version matrix and are done deliberately
+      - dependency-name: "org.keycloak:*"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
