@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: Apache-2.0
+name: DCO
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  signoff:
+    name: Every commit is signed off
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Check Signed-off-by lines
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          status=0
+          for sha in $(git rev-list --no-merges "$BASE..$HEAD"); do
+            author=$(git log -1 --format='%an <%ae>' "$sha")
+            if ! git log -1 --format='%B' "$sha" | grep -qF "Signed-off-by: $author"; then
+              echo "::error::Commit $sha is missing 'Signed-off-by: $author' (use git commit -s)"
+              status=1
+            fi
+          done
+          exit $status
