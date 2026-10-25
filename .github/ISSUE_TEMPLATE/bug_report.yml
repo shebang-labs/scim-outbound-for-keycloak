@@ -1,0 +1,46 @@
+name: Bug report
+description: Something does not work as documented
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! **Security problems must not be reported here**; see SECURITY.md.
+        Please remove tokens, secrets and personal data from logs before pasting them.
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      placeholder: "0.1.0"
+    validations:
+      required: true
+  - type: input
+    id: keycloak-version
+    attributes:
+      label: Keycloak version
+      placeholder: "26.8.0"
+    validations:
+      required: true
+  - type: input
+    id: target
+    attributes:
+      label: SCIM target application
+      description: Which application receives the SCIM requests (and its version, if known)?
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Target configuration (secrets removed)
+      render: json
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output and target status
+      description: Output of GET .../scim-outbound/targets/{id}/status and failed rows, if relevant.
+      render: shell
