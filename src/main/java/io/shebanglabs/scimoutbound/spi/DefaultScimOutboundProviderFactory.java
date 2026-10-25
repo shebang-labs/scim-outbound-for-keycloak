@@ -12,12 +12,15 @@ import io.shebanglabs.scimoutbound.events.ModelEventListener;
 import io.shebanglabs.scimoutbound.http.ScimHttp;
 import io.shebanglabs.scimoutbound.metrics.ScimMetrics;
 import io.shebanglabs.scimoutbound.outbox.Backoff;
+import io.shebanglabs.scimoutbound.reconcile.ReconcileReport;
+import io.shebanglabs.scimoutbound.reconcile.Reconciler;
 import io.shebanglabs.scimoutbound.worker.CapabilitiesCache;
 import io.shebanglabs.scimoutbound.worker.ClientFactory;
 import io.shebanglabs.scimoutbound.worker.OutboxWorker;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -45,6 +48,7 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
 
     public static final String PROVIDER_ID = "default";
     static final String WORKER_TASK = "scim-outbound-worker";
+    static final String RECONCILE_TASK = "scim-outbound-reconcile";
 
     private static final Logger LOG = Logger.getLogger(DefaultScimOutboundProviderFactory.class);
 
@@ -57,6 +61,8 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
     private volatile ClientFactory clientFactory;
     private volatile OutboxWorker worker;
     private ExecutorService executor;
+    private ExecutorService reconcileExecutor;
+    private volatile Reconciler reconciler;
     private KeycloakSessionFactory sessionFactory;
     private ScimMetrics metrics = ScimMetrics.NOOP;
 
@@ -82,11 +88,8 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
     @Override
     public void postInit(KeycloakSessionFactory factory) {
         this.sessionFactory = factory;
-        this.executor = Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "scim-outbound-worker");
-            t.setDaemon(true);
-            return t;
-        });
+        this.executor = Executors.newSingleThreadExecutor(r -> daemon(r, "scim-outbound-worker"));
+        this.reconcileExecutor = Executors.newSingleThreadExecutor(r -> daemon(r, "scim-outbound-reconcile"));
         factory.register(new ModelEventListener());
         // schedule only after Keycloak (and our Liquibase changelog) finished migrating the database
         factory.register(event -> {
@@ -112,6 +115,22 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
                 }
             };
             timer.schedule(new ClusterAwareScheduledTaskRunner(factory, trigger, interval), interval, WORKER_TASK);
+            long reconcileInterval = serverConfig.reconcileInterval().toMillis();
+            if (reconcileInterval > 0) {
+                ScheduledTask reconcile = new ScheduledTask() {
+                    @Override
+                    public void run(KeycloakSession s) {
+                        reconcileExecutor.execute(() -> reconciler().runScheduled());
+                    }
+
+                    @Override
+                    public String getTaskName() {
+                        return RECONCILE_TASK;
+                    }
+                };
+                timer.schedule(new ClusterAwareScheduledTaskRunner(factory, reconcile, reconcileInterval),
+                        reconcileInterval, RECONCILE_TASK);
+            }
         });
         LOG.debug("scim-outbound background tasks scheduled");
     }
@@ -139,6 +158,34 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
         } catch (RejectedExecutionException e) {
             draining.set(false);
         }
+    }
+
+    /** Runs a reconciliation of one target in the background. */
+    public CompletableFuture<ReconcileReport> triggerReconcile(String targetId, boolean dryRun) {
+        return CompletableFuture.supplyAsync(() -> {
+            ReconcileReport report = reconciler().run(targetId, dryRun, true);
+            triggerDrain();
+            return report;
+        }, reconcileExecutor);
+    }
+
+    Reconciler reconciler() {
+        Reconciler r = reconciler;
+        if (r == null) {
+            synchronized (this) {
+                if (reconciler == null) {
+                    reconciler = new Reconciler(sessionFactory, serverConfig, clock, clientFactory(), metrics);
+                }
+                r = reconciler;
+            }
+        }
+        return r;
+    }
+
+    private static Thread daemon(Runnable r, String name) {
+        Thread t = new Thread(r, name);
+        t.setDaemon(true);
+        return t;
     }
 
     OutboxWorker worker() {
@@ -244,6 +291,9 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
     public void close() {
         if (executor != null) {
             executor.shutdownNow();
+        }
+        if (reconcileExecutor != null) {
+            reconcileExecutor.shutdownNow();
         }
     }
 

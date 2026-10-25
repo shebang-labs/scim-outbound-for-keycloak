@@ -260,6 +260,25 @@ public class ScimAdminResource {
         return json(Response.Status.OK, Map.of("requeued", count));
     }
 
+    /**
+     * Starts a reconciliation in the background (dry run by default). The report appears in the
+     * target's status as {@code lastReconcileSummary}. A successful non-dry run arms scheduled
+     * reconciliation for this target.
+     */
+    @POST
+    @Path("targets/{id}/reconcile")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response reconcile(@PathParam("id") String id, @QueryParam("dryRun") @DefaultValue("true") boolean dryRun) {
+        auth.realm().requireManageRealm();
+        if (provider.targets().get(realm.getId(), id).isEmpty()) {
+            return notFound();
+        }
+        factory.triggerReconcile(id, dryRun);
+        audit(OperationType.ACTION, null);
+        return Response.accepted().type(MediaType.APPLICATION_JSON)
+                .entity(ScimJson.write(Map.of("accepted", true, "dryRun", dryRun))).build();
+    }
+
     /** Asks the worker to run now instead of waiting for its next tick (useful after a fix). */
     @POST
     @Path("worker/run")
