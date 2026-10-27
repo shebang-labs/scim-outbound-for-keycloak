@@ -16,18 +16,15 @@ does the rest.
 
 ## One-time setup (maintainers)
 
-1. **Maven Central**: claim the `groupId` namespace in the
-   [Central Portal](https://central.sonatype.com/) (for `io.github.<org>` this is verified through
-   the GitHub organisation). Generate a user token.
+1. **Maven Central**: claim the `io.shebanglabs` namespace in the
+   [Central Portal](https://central.sonatype.com/). It is verified with a DNS `TXT` record on
+   `shebanglabs.io` that the portal shows when the namespace is requested. Generate a user token.
 2. **Signing key**: create a dedicated GPG key for releases, publish the public key to
    `keys.openpgp.org`, and document its fingerprint in this file.
 3. **GitHub**: create an environment named `release` (restricted to maintainers, required
    reviewers recommended) with the secrets `CENTRAL_USERNAME`, `CENTRAL_PASSWORD`,
    `GPG_PRIVATE_KEY` (ASCII-armored) and `GPG_PASSPHRASE`. Enable 2FA for all maintainers and
    protect `main` and `v*` tags.
-
-> Before the first public release, check that the `groupId` in `pom.xml`
-> (`io.shebanglabs`) and the repository URLs match the organisation that will publish it.
 
 ## Cutting a release
 

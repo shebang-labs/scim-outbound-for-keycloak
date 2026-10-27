@@ -124,5 +124,5 @@ This project follows the [Contributor Covenant](CODE_OF_CONDUCT.md).
 
 ## License
 
-[Apache License 2.0](LICENSE). "Keycloak" is a trademark of its respective owners and is used here
+Maintained by [Shebang Labs](https://shebanglabs.io). [Apache License 2.0](LICENSE). "Keycloak" is a trademark of its respective owners and is used here
 only to describe compatibility.

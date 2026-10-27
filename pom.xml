@@ -23,6 +23,11 @@
   <url>https://github.com/shebang-labs/scim-outbound-for-keycloak</url>
   <inceptionYear>2026</inceptionYear>
 
+  <organization>
+    <name>Shebang Labs</name>
+    <url>https://shebanglabs.io</url>
+  </organization>
+
   <licenses>
     <license>
       <name>Apache-2.0</name>
@@ -35,6 +40,8 @@
     <developer>
       <name>Ahmed Ghazy</name>
       <email>ghazy@shebanglabs.io</email>
+      <organization>Shebang Labs</organization>
+      <organizationUrl>https://shebanglabs.io</organizationUrl>
     </developer>
   </developers>
 
