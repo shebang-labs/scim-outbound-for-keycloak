@@ -228,11 +228,15 @@ public class Reconciler {
                         .collect(Collectors.toSet());
                 s.groups().getGroupsStream(realm).filter(scope::includes).map(GroupModel::getId).forEach(groups::add);
                 IdMappingRepository mappings = new IdMappingRepository(em(s));
-                long count = mappings.count(target.id(), ResourceType.GROUP);
-                for (int first = 0; first < count; first += LOCAL_PAGE) {
-                    mappings.page(target.id(), ResourceType.GROUP, first, LOCAL_PAGE).stream()
+                // page until a short page, as for users: no int offset compared with a long count
+                for (int first = 0; ; first += LOCAL_PAGE) {
+                    List<IdMappingEntity> page = mappings.page(target.id(), ResourceType.GROUP, first, LOCAL_PAGE);
+                    page.stream()
                             .filter(m -> !existing.contains(m.getLocalId()))
                             .forEach(m -> orphanGroups.add(m.getLocalId()));
+                    if (page.size() < LOCAL_PAGE) {
+                        break;
+                    }
                 }
             });
         }
