@@ -370,6 +370,7 @@ class SyncExecutorTest {
     void relinksOwnRemoteGroup() throws Exception {
         wm.stubFor(get(urlPathEqualTo("/Groups")).willReturn(aResponse().withBody(
                 "{\"totalResults\":1,\"Resources\":[{\"id\":\"gr-1\",\"externalId\":\"g1\",\"displayName\":\"eng\"}]}")));
+        wm.stubFor(get(urlEqualTo("/Groups/gr-1")).willReturn(aResponse().withBody("{\"id\":\"gr-1\"}")));
         wm.stubFor(patch(urlEqualTo("/Groups/gr-1")).willReturn(aResponse().withStatus(204)));
         SyncExecutor ex = executor(config(null, true), true);
 
@@ -405,8 +406,23 @@ class SyncExecutorTest {
     }
 
     @Test
-    void removeMemberUsesValueFilterPath() throws Exception {
+    void removeMemberListsTheMemberAsValue() throws Exception {
         wm.stubFor(patch(urlEqualTo("/Groups/gr-1")).willReturn(aResponse().withStatus(204)));
+
+        executor(config(null, true), true).removeMember(new GroupState("g1", "eng", true, "gr-1", List.of()), "r-1");
+
+        wm.verify(1, patchRequestedFor(urlEqualTo("/Groups/gr-1")));
+        wm.verify(patchRequestedFor(urlEqualTo("/Groups/gr-1")).withRequestBody(equalToJson(
+                "{\"schemas\":[\"" + ScimSchemas.PATCH_OP + "\"],\"Operations\":[{\"op\":\"remove\","
+                        + "\"path\":\"members\",\"value\":[{\"value\":\"r-1\"}]}]}")));
+    }
+
+    @Test
+    void removeMemberFallsBackToFilterPathWhenValueFormIsRejected() throws Exception {
+        wm.stubFor(patch(urlEqualTo("/Groups/gr-1")).inScenario("r").whenScenarioStateIs("Started")
+                .willReturn(aResponse().withStatus(400)).willSetStateTo("filter"));
+        wm.stubFor(patch(urlEqualTo("/Groups/gr-1")).inScenario("r").whenScenarioStateIs("filter")
+                .willReturn(aResponse().withStatus(204)));
 
         executor(config(null, true), true).removeMember(new GroupState("g1", "eng", true, "gr-1", List.of()), "r-1");
 
@@ -416,15 +432,90 @@ class SyncExecutorTest {
     }
 
     @Test
-    void syncMembersReplacesOrClearsList() throws Exception {
+    void syncMembersSendsOnlyTheDifferences() throws Exception {
+        wm.stubFor(get(urlEqualTo("/Groups/gr-1")).willReturn(aResponse().withBody(
+                "{\"id\":\"gr-1\",\"members\":[{\"value\":\"r-1\"},{\"value\":\"r-old\"}]}")));
         wm.stubFor(patch(urlEqualTo("/Groups/gr-1")).willReturn(aResponse().withStatus(204)));
-        SyncExecutor ex = executor(config(null, true), true);
 
-        ex.syncMembers(new GroupState("g1", "eng", true, "gr-1", List.of()));
+        executor(config(null, true), true).syncMembers(new GroupState("g1", "eng", true, "gr-1", List.of("r-1", "r-2")));
+
+        wm.verify(2, patchRequestedFor(urlEqualTo("/Groups/gr-1")));
+        wm.verify(patchRequestedFor(urlEqualTo("/Groups/gr-1")).withRequestBody(equalToJson(
+                "{\"schemas\":[\"" + ScimSchemas.PATCH_OP + "\"],\"Operations\":[{\"op\":\"add\","
+                        + "\"path\":\"members\",\"value\":[{\"value\":\"r-2\"}]}]}")));
+        wm.verify(patchRequestedFor(urlEqualTo("/Groups/gr-1")).withRequestBody(equalToJson(
+                "{\"schemas\":[\"" + ScimSchemas.PATCH_OP + "\"],\"Operations\":[{\"op\":\"remove\","
+                        + "\"path\":\"members\",\"value\":[{\"value\":\"r-old\"}]}]}")));
+    }
+
+    @Test
+    void syncMembersOnlyAddsWhenMembersCannotBeFound() throws Exception {
+        // the group shows no members and users cannot be filtered by group
+        wm.stubFor(get(urlEqualTo("/Groups/gr-1")).willReturn(aResponse().withBody("{\"id\":\"gr-1\"}")));
+        wm.stubFor(get(urlPathEqualTo("/Users")).willReturn(aResponse().withStatus(400)));
+        wm.stubFor(patch(urlEqualTo("/Groups/gr-1")).willReturn(aResponse().withStatus(204)));
+
+        executor(config(null, true), true).syncMembers(new GroupState("g1", "eng", true, "gr-1", List.of("r-1")));
+
+        wm.verify(1, patchRequestedFor(urlEqualTo("/Groups/gr-1")));
+        wm.verify(patchRequestedFor(urlEqualTo("/Groups/gr-1")).withRequestBody(equalToJson(
+                "{\"schemas\":[\"" + ScimSchemas.PATCH_OP + "\"],\"Operations\":[{\"op\":\"add\","
+                        + "\"path\":\"members\",\"value\":[{\"value\":\"r-1\"}]}]}")));
+    }
+
+    @Test
+    void syncMembersRemovesStrayMembersFoundThroughTheUserFilter() throws Exception {
+        // AWS IAM Identity Center: GetGroup shows no members, ListUsers filters by groups.value
+        wm.stubFor(get(urlEqualTo("/Groups/gr-1")).willReturn(aResponse().withBody("{\"id\":\"gr-1\"}")));
+        wm.stubFor(get(urlPathEqualTo("/Users")).withQueryParam("count", com.github.tomakehurst.wiremock.client.WireMock.equalTo("1"))
+                .willReturn(aResponse().withBody(EMPTY_LIST)));
+        wm.stubFor(get(urlPathEqualTo("/Users")).withQueryParam("count", com.github.tomakehurst.wiremock.client.WireMock.equalTo("100"))
+                .withQueryParam("filter", com.github.tomakehurst.wiremock.client.WireMock.equalTo("groups.value eq \"gr-1\""))
+                .willReturn(aResponse().withBody("{\"Resources\":[{\"id\":\"r-1\"},{\"id\":\"r-stray\"}]}")));
+        wm.stubFor(patch(urlEqualTo("/Groups/gr-1")).willReturn(aResponse().withStatus(204)));
+
+        executor(config(null, true), true).syncMembers(new GroupState("g1", "eng", true, "gr-1", List.of("r-1")));
 
         wm.verify(patchRequestedFor(urlEqualTo("/Groups/gr-1")).withRequestBody(equalToJson(
                 "{\"schemas\":[\"" + ScimSchemas.PATCH_OP + "\"],\"Operations\":[{\"op\":\"remove\","
-                        + "\"path\":\"members\"}]}")));
+                        + "\"path\":\"members\",\"value\":[{\"value\":\"r-stray\"}]}]}")));
+    }
+
+    @Test
+    void userFilterIsNotTrustedWhenTheServerIgnoresIt() throws Exception {
+        // a server that ignores the filter returns users even for a group that cannot exist
+        wm.stubFor(get(urlEqualTo("/Groups/gr-1")).willReturn(aResponse().withBody("{\"id\":\"gr-1\"}")));
+        wm.stubFor(get(urlPathEqualTo("/Users"))
+                .willReturn(aResponse().withBody("{\"Resources\":[{\"id\":\"r-1\"},{\"id\":\"r-other\"}]}")));
+        wm.stubFor(patch(urlEqualTo("/Groups/gr-1")).willReturn(aResponse().withStatus(204)));
+
+        executor(config(null, true), true).syncMembers(new GroupState("g1", "eng", true, "gr-1", List.of("r-1")));
+
+        wm.verify(1, patchRequestedFor(urlEqualTo("/Groups/gr-1"))); // the addition only
+    }
+
+    @Test
+    void syncMembersNeverReplacesOrClearsTheWholeList() throws Exception {
+        wm.stubFor(get(urlEqualTo("/Groups/gr-1")).willReturn(aResponse().withBody("{\"id\":\"gr-1\"}")));
+
+        executor(config(null, true), true).syncMembers(new GroupState("g1", "eng", true, "gr-1", List.of()));
+
+        wm.verify(0, patchRequestedFor(urlEqualTo("/Groups/gr-1")));
+    }
+
+    @Test
+    void largeGroupIsCreatedWithAtMostOneChunkAndFilledInChunks() throws Exception {
+        List<String> members = java.util.stream.IntStream.range(0, 250).mapToObj(i -> "r-" + i).toList();
+        wm.stubFor(get(urlPathEqualTo("/Groups")).willReturn(aResponse().withBody(EMPTY_LIST)));
+        wm.stubFor(post("/Groups").willReturn(aResponse().withStatus(201).withBody("{\"id\":\"gr-1\"}")));
+        wm.stubFor(patch(urlEqualTo("/Groups/gr-1")).willReturn(aResponse().withStatus(204)));
+
+        executor(config(null, true), true).upsertGroup(new GroupState("g1", "eng", true, null, members));
+
+        wm.verify(postRequestedFor(urlEqualTo("/Groups"))
+                .withRequestBody(com.github.tomakehurst.wiremock.client.WireMock.matchingJsonPath(
+                        "$.members.length()", com.github.tomakehurst.wiremock.client.WireMock.equalTo("100"))));
+        wm.verify(2, patchRequestedFor(urlEqualTo("/Groups/gr-1")));
     }
 
     @Test

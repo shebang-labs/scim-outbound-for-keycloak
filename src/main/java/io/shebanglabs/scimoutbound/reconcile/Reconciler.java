@@ -10,6 +10,7 @@ import io.shebanglabs.scimoutbound.config.ScimTarget;
 import io.shebanglabs.scimoutbound.config.ServerConfig;
 import io.shebanglabs.scimoutbound.http.ScimClient;
 import io.shebanglabs.scimoutbound.http.ScimException;
+import io.shebanglabs.scimoutbound.http.UserListing;
 import io.shebanglabs.scimoutbound.jpa.IdMappingEntity;
 import io.shebanglabs.scimoutbound.jpa.IdMappingRepository;
 import io.shebanglabs.scimoutbound.jpa.OutboxRepository;
@@ -23,14 +24,12 @@ import io.shebanglabs.scimoutbound.reconcile.ReconcilePlanner.LocalUser;
 import io.shebanglabs.scimoutbound.reconcile.ReconcilePlanner.OrphanMapping;
 import io.shebanglabs.scimoutbound.reconcile.ReconcilePlanner.UserPlan;
 import io.shebanglabs.scimoutbound.scim.ScimJson;
-import io.shebanglabs.scimoutbound.scim.ScimListResponse;
 import io.shebanglabs.scimoutbound.scim.ScimUser;
 import io.shebanglabs.scimoutbound.worker.ClientFactory;
 import io.shebanglabs.scimoutbound.worker.ScopeEvaluator;
 import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -56,10 +55,7 @@ import org.keycloak.models.utils.KeycloakModelUtils;
 public class Reconciler {
 
     private static final Logger LOG = Logger.getLogger(Reconciler.class);
-    static final int REMOTE_PAGE = 100;
     static final int LOCAL_PAGE = 500;
-    /** Upper bound on remote users read into memory in one run. */
-    static final int MAX_REMOTE_USERS = 500_000;
 
     private final KeycloakSessionFactory factory;
     private final ServerConfig serverConfig;
@@ -138,7 +134,7 @@ public class Reconciler {
         ScimTarget target = setup.get().target();
         boolean dryRun = setup.get().effectiveDryRun();
 
-        Map<String, ScimUser> remote = listRemoteUsers(setup.get().client());
+        Map<String, ScimUser> remote = UserListing.all(setup.get().client(), null);
         LocalSide local = readLocalSide(target);
         if (local.scopeMisconfigured()) {
             return ReconcileReport.failed(targetId, dryRun, started, clock.millis(),
@@ -172,27 +168,6 @@ public class Reconciler {
         return new ReconcileReport(targetId, dryRun, blocked, local.users().size(), remote.size(), plan.creates(),
                 plan.updates(), removals - local.orphanGroups().size(), plan.unmanagedRemote(), local.groups().size(),
                 local.orphanGroups().size(), started, clock.millis(), message);
-    }
-
-    private Map<String, ScimUser> listRemoteUsers(ScimClient client) throws ScimException {
-        Map<String, ScimUser> byId = new HashMap<>();
-        int startIndex = 1;
-        while (true) {
-            ScimListResponse<ScimUser> page = client.listUsers(startIndex, REMOTE_PAGE);
-            List<ScimUser> resources = page.resourcesOrEmpty();
-            for (ScimUser user : resources) {
-                if (user.id() != null) {
-                    byId.put(user.id(), user);
-                }
-            }
-            if (byId.size() > MAX_REMOTE_USERS) {
-                throw new ScimException("target has more than " + MAX_REMOTE_USERS + " users; aborting", null, false);
-            }
-            startIndex += resources.size();
-            if (resources.isEmpty() || startIndex > page.total()) {
-                return byId;
-            }
-        }
     }
 
     private record LocalSide(List<LocalUser> users, List<OrphanMapping> orphans, long managedUsers,

@@ -10,6 +10,7 @@ import io.shebanglabs.scimoutbound.http.Outcome;
 import io.shebanglabs.scimoutbound.http.ScimClient;
 import io.shebanglabs.scimoutbound.http.ScimException;
 import io.shebanglabs.scimoutbound.http.ScimResponse;
+import io.shebanglabs.scimoutbound.http.UserListing;
 import io.shebanglabs.scimoutbound.mapping.UserMapper;
 import io.shebanglabs.scimoutbound.outbox.ResourceType;
 import io.shebanglabs.scimoutbound.scim.ScimGroup;
@@ -22,8 +23,11 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Applies one outbox operation to a SCIM target (design report section 5.4). It runs outside any
@@ -34,6 +38,9 @@ import java.util.Set;
  * first and turn 409 into a link, updates that hit 404 re-create, deletes treat 404 as success.
  */
 public class SyncExecutor {
+
+    /** Most member changes sent in one request; AWS IAM Identity Center allows no more. */
+    static final int MEMBER_CHUNK = 100;
 
     private final ScimClient client;
     private final TargetConfig config;
@@ -222,12 +229,16 @@ public class SyncExecutor {
             replaceMembers(id, group, group.memberRemoteIds());
             return id;
         }
-        ScimResponse created = client.createGroup(scimGroup(group, group.memberRemoteIds()));
+        // PUT-only servers get every member at once; PATCH servers get the rest in chunks
+        List<String> members = group.memberRemoteIds();
+        int inCreate = patchSupported ? Math.min(members.size(), MEMBER_CHUNK) : members.size();
+        ScimResponse created = client.createGroup(scimGroup(group, members.subList(0, inCreate)));
         if (created.isSuccess()) {
             String id = idFrom(created, ScimGroup.class).map(ScimGroup::id)
                     .or(() -> lookupGroupId(group.displayName()))
                     .orElseThrow(() -> permanent("group created but the server returned no id"));
             link(ResourceType.GROUP, group.groupId(), id);
+            addMembers(id, members.subList(inCreate, members.size()));
             return id;
         }
         if (created.outcome() == Outcome.CONFLICT) {
@@ -274,14 +285,12 @@ public class SyncExecutor {
         if (!config.syncGroupsOrDefault() || group.remoteId() == null || userRemoteId == null) {
             return;
         }
-        ScimResponse response;
         if (patchSupported) {
-            response = client.patchGroup(group.remoteId(), ScimPatchOp.builder()
-                    .remove("members[value eq " + quote(userRemoteId) + "]").build());
-        } else {
-            List<String> remaining = group.memberRemoteIds().stream().filter(id -> !id.equals(userRemoteId)).toList();
-            response = client.replaceGroup(group.remoteId(), scimGroup(group, remaining));
+            removeMembers(group.remoteId(), List.of(userRemoteId), true);
+            return;
         }
+        List<String> remaining = group.memberRemoteIds().stream().filter(id -> !id.equals(userRemoteId)).toList();
+        ScimResponse response = client.replaceGroup(group.remoteId(), scimGroup(group, remaining));
         if (!response.isSuccess() && response.outcome() != Outcome.NOT_FOUND) {
             throw failure("group member remove", response);
         }
@@ -307,21 +316,99 @@ public class SyncExecutor {
         }
     }
 
+    /**
+     * Makes the remote member list match. With PATCH only the differences are sent, never a
+     * "replace members" or "remove all members", which servers such as AWS IAM Identity Center
+     * reject. A server that does not show members on the group (AWS again) gets the additions, and
+     * its stray members are found by listing the users that are members of the group, when the
+     * server can filter users that way.
+     */
     private void replaceMembers(String remoteId, GroupState group, List<String> memberRemoteIds)
             throws ScimException {
-        ScimResponse response;
-        if (patchSupported) {
-            ScimPatchOp patch = memberRemoteIds.isEmpty()
-                    ? ScimPatchOp.builder().remove("members").build()
-                    : ScimPatchOp.builder().replace("members",
-                            memberRemoteIds.stream().map(ScimMember::of).toList()).build();
-            response = client.patchGroup(remoteId, patch);
-        } else {
-            response = client.replaceGroup(remoteId, scimGroup(group, memberRemoteIds));
+        if (!patchSupported) {
+            ScimResponse response = client.replaceGroup(remoteId, scimGroup(group, memberRemoteIds));
+            if (!response.isSuccess()) {
+                throw failure("group member sync", response);
+            }
+            return;
         }
-        if (!response.isSuccess()) {
-            throw failure("group member sync", response);
+        ScimResponse current = client.getGroup(remoteId);
+        if (!current.isSuccess()) {
+            throw failure("group read", current);
         }
+        Set<String> wanted = new LinkedHashSet<>(memberRemoteIds);
+        Optional<Set<String>> shown = idFrom(current, ScimGroup.class)
+                .map(ScimGroup::members)
+                .map(list -> list.stream().map(ScimMember::value).filter(Objects::nonNull).collect(Collectors.toSet()));
+        if (shown.isEmpty()) {
+            addMembers(remoteId, List.copyOf(wanted));
+            Optional<Set<String>> listed = membersByUserFilter(remoteId);
+            if (listed.isPresent()) {
+                removeMembers(remoteId, listed.get().stream().filter(id -> !wanted.contains(id)).toList(), false);
+            }
+            return;
+        }
+        addMembers(remoteId, wanted.stream().filter(id -> !shown.get().contains(id)).toList());
+        removeMembers(remoteId, shown.get().stream().filter(id -> !wanted.contains(id)).toList(), false);
+    }
+
+    /**
+     * The members of a group, read as the users matching {@code groups.value eq "<id>"}, or empty
+     * when the server cannot tell. A server that ignores the filter would return every user and get
+     * them all removed from the group, so the same question is first asked about a group that
+     * cannot exist: any answer but "nobody" means the filter is not applied.
+     */
+    private Optional<Set<String>> membersByUserFilter(String remoteGroupId) throws ScimException {
+        try {
+            if (client.anyUser(ScimClient.memberOf("no-such-group-" + UUID.randomUUID()))) {
+                return Optional.empty();
+            }
+            return Optional.of(UserListing.all(client, ScimClient.memberOf(remoteGroupId)).keySet());
+        } catch (ScimException e) {
+            if (e.isRetryable()) {
+                throw e;
+            }
+            return Optional.empty(); // filtering users by group is not supported
+        }
+    }
+
+    private void addMembers(String remoteId, List<String> memberRemoteIds) throws ScimException {
+        for (List<String> chunk : chunks(memberRemoteIds)) {
+            ScimResponse response = client.patchGroup(remoteId,
+                    ScimPatchOp.builder().add("members", chunk.stream().map(ScimMember::of).toList()).build());
+            if (!response.isSuccess()) {
+                throw failure("group member add", response);
+            }
+        }
+    }
+
+    /**
+     * Removes members by listing them as the value of a {@code members} removal, the form AWS IAM
+     * Identity Center and Microsoft Entra use. Servers that only accept the RFC 7644 filter path
+     * ({@code members[value eq "id"]}) reject it with 400 and are sent that form instead.
+     */
+    private void removeMembers(String remoteId, List<String> memberRemoteIds, boolean groupMayBeGone)
+            throws ScimException {
+        for (List<String> chunk : chunks(memberRemoteIds)) {
+            ScimResponse response = client.patchGroup(remoteId,
+                    ScimPatchOp.builder().remove("members", chunk.stream().map(ScimMember::of).toList()).build());
+            if (response.status() == 400) {
+                ScimPatchOp.Builder byFilter = ScimPatchOp.builder();
+                chunk.forEach(id -> byFilter.remove("members[value eq " + quote(id) + "]"));
+                response = client.patchGroup(remoteId, byFilter.build());
+            }
+            if (!response.isSuccess() && !(groupMayBeGone && response.outcome() == Outcome.NOT_FOUND)) {
+                throw failure("group member remove", response);
+            }
+        }
+    }
+
+    private static List<List<String>> chunks(List<String> ids) {
+        List<List<String>> chunks = new ArrayList<>();
+        for (int i = 0; i < ids.size(); i += MEMBER_CHUNK) {
+            chunks.add(ids.subList(i, Math.min(ids.size(), i + MEMBER_CHUNK)));
+        }
+        return chunks;
     }
 
     private static ScimGroup scimGroup(GroupState group, List<String> memberRemoteIds) {

@@ -105,7 +105,7 @@ class GroupProvisioningIT {
         await().atMost(WAIT).untilAsserted(() -> env.scim().verifyThat(patchRequestedFor(
                 urlEqualTo("/scim/v2/Groups/g-engineering")).withRequestBody(equalToJson(
                 "{\"schemas\":[\"" + PATCH_OP + "\"],\"Operations\":[{\"op\":\"remove\","
-                        + "\"path\":\"members[value eq \\\"u-frank\\\"]\"}]}"))));
+                        + "\"path\":\"members\",\"value\":[{\"value\":\"u-frank\"}]}]}"))));
 
         GroupResource group = env.admin().realm(REALM).groups().group(groupId);
         GroupRepresentation rep = group.toRepresentation();

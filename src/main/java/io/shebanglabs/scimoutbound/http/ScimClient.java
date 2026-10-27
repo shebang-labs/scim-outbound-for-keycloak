@@ -86,8 +86,39 @@ public class ScimClient {
         return call("DELETE", "/Users/" + encodePath(id), null);
     }
 
-    public ScimListResponse<ScimUser> listUsers(int startIndex, int count) throws ScimException {
-        return list("/Users", startIndex, count, USER_LIST);
+    /**
+     * One page of users by index (RFC 7644 section 3.4.2.4).
+     *
+     * @param filter a SCIM filter, or {@code null} for all users
+     */
+    public ScimListResponse<ScimUser> listUsers(int startIndex, int count, String filter) throws ScimException {
+        return list("/Users?startIndex=" + startIndex + "&count=" + count + filterParam(filter), USER_LIST);
+    }
+
+    /**
+     * One page of users by cursor (RFC 9865). An empty cursor asks for the first page; servers
+     * that page this way (such as AWS IAM Identity Center) do not support {@code startIndex}.
+     *
+     * @param filter a SCIM filter, or {@code null} for all users
+     */
+    public ScimListResponse<ScimUser> listUsersByCursor(String cursor, int count, String filter)
+            throws ScimException {
+        String query = cursor.isEmpty() ? "?cursor" : "?cursor=" + encodeQuery(cursor);
+        return list("/Users" + query + "&count=" + count + filterParam(filter), USER_LIST);
+    }
+
+    /** Whether any user matches a filter; reads a single result. */
+    public boolean anyUser(String filter) throws ScimException {
+        return !list("/Users?filter=" + encodeQuery(filter) + "&count=1", USER_LIST).resourcesOrEmpty().isEmpty();
+    }
+
+    /** Filter matching the users that are members of a remote group. */
+    public static String memberOf(String remoteGroupId) {
+        return "groups.value eq " + quote(remoteGroupId);
+    }
+
+    private static String filterParam(String filter) {
+        return filter == null ? "" : "&filter=" + encodeQuery(filter);
     }
 
     // ---- groups ------------------------------------------------------------------------------
@@ -98,6 +129,10 @@ public class ScimClient {
 
     public ScimResponse createGroup(ScimGroup group) throws ScimException {
         return call("POST", "/Groups", ScimJson.write(group));
+    }
+
+    public ScimResponse getGroup(String id) throws ScimException {
+        return call("GET", "/Groups/" + encodePath(id), null);
     }
 
     public ScimResponse replaceGroup(String id, ScimGroup group) throws ScimException {
@@ -111,11 +146,6 @@ public class ScimClient {
 
     public ScimResponse deleteGroup(String id) throws ScimException {
         return call("DELETE", "/Groups/" + encodePath(id), null);
-    }
-
-    public ScimListResponse<ScimGroup> listGroups(int startIndex, int count) throws ScimException {
-        // members can be huge; reconciliation only needs ids and names
-        return list("/Groups", startIndex, count, GROUP_LIST, "&excludedAttributes=members");
     }
 
     // ---- plumbing ----------------------------------------------------------------------------
@@ -134,14 +164,9 @@ public class ScimClient {
         }
     }
 
-    private <T> ScimListResponse<T> list(String path, int startIndex, int count,
-            TypeReference<ScimListResponse<T>> type) throws ScimException {
-        return list(path, startIndex, count, type, "");
-    }
-
-    private <T> ScimListResponse<T> list(String path, int startIndex, int count,
-            TypeReference<ScimListResponse<T>> type, String extra) throws ScimException {
-        ScimResponse response = call("GET", path + "?startIndex=" + startIndex + "&count=" + count + extra, null);
+    private <T> ScimListResponse<T> list(String pathAndQuery, TypeReference<ScimListResponse<T>> type)
+            throws ScimException {
+        ScimResponse response = call("GET", pathAndQuery, null);
         if (!response.isSuccess()) {
             throw new ScimException("list failed: " + response.errorSummary(), response);
         }

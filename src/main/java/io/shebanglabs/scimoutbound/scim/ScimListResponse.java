@@ -10,7 +10,8 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import java.util.List;
 
 /**
- * Query response (RFC 7644 section 3.4.2).
+ * Query response (RFC 7644 section 3.4.2). {@code nextCursor} is set by servers paging with
+ * cursors (RFC 9865) when more results follow.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -19,7 +20,8 @@ public record ScimListResponse<T>(
         Integer totalResults,
         Integer startIndex,
         Integer itemsPerPage,
-        @JsonProperty("Resources") List<T> resources) {
+        @JsonProperty("Resources") List<T> resources,
+        String nextCursor) {
 
     public List<T> resourcesOrEmpty() {
         return resources == null ? List.of() : resources;

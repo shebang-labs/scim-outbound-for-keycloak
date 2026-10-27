@@ -131,7 +131,7 @@ class ReconciliationIT {
         env.admin().realm(REALM).users().get(userId).remove();
         updateTarget(targetId, c -> c.put("enabled", true));
         env.scim().register(get(urlPathEqualTo("/brake/scim/v2/Users")).atPriority(1)
-                .withQueryParam("startIndex", matching(".*"))
+                .withQueryParam("count", matching(".*")) // listings (by cursor or index), not lookups
                 .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/scim+json")
                         .withBody("{\"totalResults\":1,\"Resources\":[{\"id\":\"u-oscar\",\"userName\":\"oscar\","
                                 + "\"active\":true}]}")));

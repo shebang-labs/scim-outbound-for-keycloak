@@ -173,12 +173,18 @@ class ScimClientTest {
     }
 
     @Test
-    void listGroupsExcludesMembers() throws Exception {
-        wm.stubFor(get(urlPathEqualTo("/scim/v2/Groups"))
-                .willReturn(aResponse().withStatus(200).withBody("{\"totalResults\":0,\"Resources\":[]}")));
+    void listsUsersByIndexAndByCursor() throws Exception {
+        wm.stubFor(get(urlPathEqualTo("/scim/v2/Users"))
+                .willReturn(aResponse().withStatus(200).withBody("{\"Resources\":[],\"nextCursor\":\"n/2+\"}")));
+        ScimClient client = client(new BearerAuthenticator("t"));
 
-        client(new BearerAuthenticator("t")).listGroups(1, 50);
+        client.listUsers(101, 100, null);
+        assertThat(client.listUsersByCursor("", 100, null).nextCursor()).isEqualTo("n/2+");
+        client.listUsersByCursor("n/2+", 100, ScimClient.memberOf("g\"1"));
 
-        wm.verify(getRequestedFor(urlEqualTo("/scim/v2/Groups?startIndex=1&count=50&excludedAttributes=members")));
+        wm.verify(getRequestedFor(urlEqualTo("/scim/v2/Users?startIndex=101&count=100")));
+        wm.verify(getRequestedFor(urlEqualTo("/scim/v2/Users?cursor&count=100")));
+        wm.verify(getRequestedFor(urlEqualTo(
+                "/scim/v2/Users?cursor=n%2F2%2B&count=100&filter=groups.value%20eq%20%22g%5C%221%22")));
     }
 }

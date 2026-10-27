@@ -45,6 +45,12 @@ public record ScimPatchOp(List<String> schemas, @JsonProperty("Operations") List
             return this;
         }
 
+        /** Removes the listed values, e.g. {@code members} with a list of member references. */
+        public Builder remove(String path, Object value) {
+            operations.add(new Operation("remove", path, value));
+            return this;
+        }
+
         public boolean isEmpty() {
             return operations.isEmpty();
         }

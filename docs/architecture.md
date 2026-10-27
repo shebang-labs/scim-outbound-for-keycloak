@@ -98,7 +98,7 @@ PENDING ──newer change for the same object──► SUPERSEDED
 | `404` on update | unlink, look up, re-create |
 | Deprovision | `PATCH active=false` (default) or `DELETE`; `404` counts as success |
 | User leaves the target's scope | deprovisioned, link kept (deactivate mode) so re-entry reactivates the same account |
-| Groups | `displayName` = group name, `externalId` = group id; members added/removed with PATCH (`members[value eq "id"]`), full replace during reconciliation |
+| Groups | `displayName` = group name, `externalId` = group id. Members are added and removed with PATCH, at most 100 per request (also when a group is created); removal lists the members as the `value` of a `members` removal and falls back to `members[value eq "id"]` if the server rejects that. A full member sync reads the group and sends only the differences: never "replace members" or "remove all members", which some servers reject. A server that does not return members on the group (AWS IAM Identity Center) gets the additions, and its stray members are found by listing users with `groups.value eq "<group id>"`. That listing is only trusted after the same question about a group that cannot exist returns nobody, so a server that ignores the filter never gets all its users removed; without a usable filter, departures reach it through their own membership events only. |
 | `401` | credentials refreshed once (OAuth), then retried once; a second 401 is reported |
 | `429`, `5xx`, timeouts | retried with backoff |
 | other `4xx` | `FAILED`, sanitised error stored for the admin |
@@ -123,10 +123,17 @@ tasks.
 
 ## Reconciliation
 
-For each target: list remote users (paged, outside transactions), read Keycloak users in scope in
+For each target: list remote users (outside transactions), read Keycloak users in scope in
 pages, compare using the ID map, and queue `UPSERT`s for missing or drifted users, deprovisioning
-for out-of-scope or orphaned **managed** accounts, and group upserts plus full member syncs.
+for out-of-scope or orphaned **managed** accounts, and group upserts plus member syncs.
 Remote accounts that the plugin never created or linked are counted but never touched.
+
+Remote users are read 100 at a time. The first request carries an empty `cursor`
+([RFC 9865](https://www.rfc-editor.org/rfc/rfc9865)): servers that page by cursor, such as AWS
+IAM Identity Center (which does not support `startIndex`), answer with `nextCursor`; servers that
+page by index ignore it and continue with `startIndex`; servers that reject it are read by
+`startIndex` from the start. A server that repeats a cursor or returns the same page again stops
+the run with an error instead of producing a wrong comparison.
 
 Safety: if removals exceed `removalFloor` and `maxRemovalPercent` of managed accounts, the run is
 **blocked and changes nothing**. Until an admin completes one real run, scheduled runs are dry
