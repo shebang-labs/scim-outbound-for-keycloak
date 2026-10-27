@@ -43,7 +43,9 @@ jobs:
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
-          ./mvnw -B -ntp versions:set -DnewVersion="$VERSION"
+          # never: versions:set would otherwise write the current time into the pom, which ends up
+          # in the jar and makes it differ from a rebuild
+          ./mvnw -B -ntp versions:set -DnewVersion="$VERSION" -DupdateBuildOutputTimestampPolicy=never
           # reproducible build timestamp: the tagged commit's time
           echo "OUTPUT_TIMESTAMP=$(git log -1 --format=%cI)" >> "$GITHUB_ENV"
 
