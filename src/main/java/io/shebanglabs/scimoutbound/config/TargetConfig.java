@@ -29,7 +29,8 @@ public record TargetConfig(
         Scope scope,
         Map<String, String> customAttributes,
         Safety safety,
-        LoopProtection loopProtection) {
+        LoopProtection loopProtection,
+        Boolean linkExistingAccounts) {
 
     /** Value returned in place of every secret. Sending it back on update keeps the stored secret. */
     public static final String SECRET_MASK = "**********";
@@ -92,6 +93,16 @@ public record TargetConfig(
         return enabled == null || enabled;
     }
 
+    /**
+     * Whether an account that already exists on the target with the same {@code userName} (or a
+     * group with the same {@code displayName}) may be taken over although its {@code externalId}
+     * does not name the Keycloak user or group. Off by default: taking over an account means
+     * overwriting it now and deactivating or deleting it when the Keycloak user goes away.
+     */
+    public boolean linkExistingAccountsOrDefault() {
+        return linkExistingAccounts != null && linkExistingAccounts;
+    }
+
     public boolean syncGroupsOrDefault() {
         return syncGroups != null && syncGroups;
     }
@@ -151,6 +162,6 @@ public record TargetConfig(
 
     private TargetConfig withAuth(Auth newAuth) {
         return new TargetConfig(name, enabled, baseUrl, newAuth, deprovision, syncGroups, scope,
-                customAttributes, safety, loopProtection);
+                customAttributes, safety, loopProtection, linkExistingAccounts);
     }
 }

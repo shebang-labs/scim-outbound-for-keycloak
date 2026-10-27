@@ -25,7 +25,7 @@ class TargetValidatorTest {
     private static TargetConfig bearer(String token) {
         return new TargetConfig("app-a", true, "https://app-a.example.com/scim/v2",
                 new TargetConfig.Auth(AuthType.BEARER, token, null, null, null, null, null, null),
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
     }
 
     @Test
@@ -49,7 +49,7 @@ class TargetValidatorTest {
     void oauthRequiresTokenUrlClientIdAndSecret() {
         TargetConfig config = new TargetConfig("app-b", true, "https://app-b.example.com/scim",
                 new TargetConfig.Auth(AuthType.OAUTH2_CLIENT_CREDENTIALS, null, null, null, null, null, null, null),
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> validator(Map.of()).validate(config))
                 .hasMessageContaining("auth.tokenUrl")
@@ -61,7 +61,7 @@ class TargetValidatorTest {
     void basicRequiresUsername() {
         TargetConfig config = new TargetConfig("app-c", true, "https://app-c.example.com/scim",
                 new TargetConfig.Auth(AuthType.BASIC, null, null, "${vault.pw}", null, null, null, null),
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> validator(Map.of()).validate(config)).hasMessageContaining("auth.username");
     }
@@ -70,7 +70,7 @@ class TargetValidatorTest {
     void reportsAllProblemsTogether() {
         TargetConfig config = new TargetConfig("bad name!", true, "http://x.example.com",
                 null, null, null, new TargetConfig.Scope(List.of(" ")),
-                Map.of("password", "pw"), new TargetConfig.Safety(150, -1, null), null);
+                Map.of("password", "pw"), new TargetConfig.Safety(150, -1, null), null, null);
 
         assertThatThrownBy(() -> validator(Map.of()).validate(config))
                 .hasMessageContaining("name must be")

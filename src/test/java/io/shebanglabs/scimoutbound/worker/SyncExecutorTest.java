@@ -70,7 +70,11 @@ class SyncExecutorTest {
     }
 
     private static TargetConfig config(DeprovisionMode mode, boolean groups) {
-        return new TargetConfig("t", true, "https://x", null, mode, groups, null, null, null, null);
+        return new TargetConfig("t", true, "https://x", null, mode, groups, null, null, null, null, null);
+    }
+
+    private static TargetConfig linkingExisting(boolean groups) {
+        return new TargetConfig("t", true, "https://x", null, null, groups, null, null, null, null, true);
     }
 
     private static UserState alice(String remoteId, boolean inScope, List<String> groups) {
@@ -96,9 +100,10 @@ class SyncExecutorTest {
     }
 
     @Test
-    void linksExistingRemoteUserInsteadOfCreatingDuplicate() throws Exception {
-        wm.stubFor(get(urlPathEqualTo("/Users")).willReturn(aResponse()
-                .withBody("{\"totalResults\":1,\"Resources\":[{\"id\":\"r-9\",\"userName\":\"alice\"}]}")));
+    void relinksOwnRemoteUserInsteadOfCreatingDuplicate() throws Exception {
+        // e.g. the user was created but the node crashed before the link was saved
+        wm.stubFor(get(urlPathEqualTo("/Users")).willReturn(aResponse().withBody(
+                "{\"totalResults\":1,\"Resources\":[{\"id\":\"r-9\",\"externalId\":\"kc-1\",\"userName\":\"alice\"}]}")));
         wm.stubFor(patch(urlEqualTo("/Users/r-9")).willReturn(aResponse().withStatus(200)));
         SyncExecutor ex = executor(config(null, false), true);
 
@@ -110,19 +115,62 @@ class SyncExecutorTest {
     }
 
     @Test
+    void leavesForeignRemoteUserWithSameUserNameUntouched() {
+        wm.stubFor(get(urlPathEqualTo("/Users")).willReturn(aResponse().withBody(
+                "{\"totalResults\":1,\"Resources\":[{\"id\":\"r-real\",\"externalId\":\"someone-else\","
+                        + "\"userName\":\"alice\"}]}")));
+        SyncExecutor ex = executor(config(null, false), true);
+
+        assertThatThrownBy(() -> ex.upsertUser(alice(null, true, List.of())))
+                .isInstanceOf(ScimException.class)
+                .hasMessageContaining("left untouched")
+                .satisfies(e -> assertThat(((ScimException) e).isRetryable()).isFalse());
+        assertThat(ex.changes()).isEmpty();
+        wm.verify(1, anyRequestedFor(anyUrl())); // the lookup only: no create, no update
+    }
+
+    @Test
+    void takesOverForeignRemoteUserWhenAllowed() throws Exception {
+        wm.stubFor(get(urlPathEqualTo("/Users")).willReturn(aResponse().withBody(
+                "{\"totalResults\":1,\"Resources\":[{\"id\":\"r-9\",\"userName\":\"alice\"}]}")));
+        wm.stubFor(patch(urlEqualTo("/Users/r-9")).willReturn(aResponse().withStatus(200)));
+        SyncExecutor ex = executor(linkingExisting(false), true);
+
+        ex.upsertUser(alice(null, true, List.of()));
+
+        assertThat(ex.changes()).containsExactly(MappingChange.link(ResourceType.USER, "kc-1", "r-9"));
+        wm.verify(patchRequestedFor(urlEqualTo("/Users/r-9")));
+    }
+
+    @Test
     void conflictOnCreateBecomesLink() throws Exception {
         wm.stubFor(get(urlPathEqualTo("/Users")).inScenario("c").whenScenarioStateIs("Started")
                 .willReturn(aResponse().withBody(EMPTY_LIST)).willSetStateTo("created"));
         wm.stubFor(post("/Users").willReturn(aResponse().withStatus(409)
                 .withBody("{\"status\":\"409\",\"scimType\":\"uniqueness\"}")));
         wm.stubFor(get(urlPathEqualTo("/Users")).inScenario("c").whenScenarioStateIs("created")
-                .willReturn(aResponse().withBody("{\"totalResults\":1,\"Resources\":[{\"id\":\"r-2\"}]}")));
+                .willReturn(aResponse().withBody(
+                        "{\"totalResults\":1,\"Resources\":[{\"id\":\"r-2\",\"externalId\":\"kc-1\"}]}")));
         wm.stubFor(patch(urlEqualTo("/Users/r-2")).willReturn(aResponse().withStatus(204)));
         SyncExecutor ex = executor(config(null, false), true);
 
         ex.upsertUser(alice(null, true, List.of()));
 
         assertThat(ex.changes()).containsExactly(MappingChange.link(ResourceType.USER, "kc-1", "r-2"));
+    }
+
+    @Test
+    void conflictWithoutSameUserNamePointsAtAnotherUniqueValue() {
+        // AWS answers 409 when the email address belongs to another account
+        wm.stubFor(get(urlPathEqualTo("/Users")).willReturn(aResponse().withBody(EMPTY_LIST)));
+        wm.stubFor(post("/Users").willReturn(aResponse().withStatus(409)
+                .withBody("{\"status\":\"409\",\"detail\":\"Duplicate email\"}")));
+        SyncExecutor ex = executor(config(null, false), true);
+
+        assertThatThrownBy(() -> ex.upsertUser(alice(null, true, List.of())))
+                .isInstanceOf(ScimException.class)
+                .hasMessageContaining("HTTP 409: Duplicate email")
+                .hasMessageContaining("usually the email address");
     }
 
     @Test
@@ -302,6 +350,32 @@ class SyncExecutorTest {
         wm.verify(postRequestedFor(urlEqualTo("/Groups")).withRequestBody(equalToJson(
                 "{\"schemas\":[\"" + ScimSchemas.GROUP + "\"],\"externalId\":\"g1\",\"displayName\":\"eng\","
                         + "\"members\":[{\"value\":\"r-1\"},{\"value\":\"r-2\"}]}")));
+    }
+
+    @Test
+    void leavesForeignRemoteGroupWithSameNameUntouched() {
+        // replacing its members would remove people that Keycloak never added
+        wm.stubFor(get(urlPathEqualTo("/Groups")).willReturn(aResponse().withBody(
+                "{\"totalResults\":1,\"Resources\":[{\"id\":\"gr-real\",\"displayName\":\"eng\"}]}")));
+        SyncExecutor ex = executor(config(null, true), true);
+
+        assertThatThrownBy(() -> ex.upsertGroup(new GroupState("g1", "eng", true, null, List.of("r-1"))))
+                .isInstanceOf(ScimException.class)
+                .hasMessageContaining("left untouched");
+        assertThat(ex.changes()).isEmpty();
+        wm.verify(1, anyRequestedFor(anyUrl()));
+    }
+
+    @Test
+    void relinksOwnRemoteGroup() throws Exception {
+        wm.stubFor(get(urlPathEqualTo("/Groups")).willReturn(aResponse().withBody(
+                "{\"totalResults\":1,\"Resources\":[{\"id\":\"gr-1\",\"externalId\":\"g1\",\"displayName\":\"eng\"}]}")));
+        wm.stubFor(patch(urlEqualTo("/Groups/gr-1")).willReturn(aResponse().withStatus(204)));
+        SyncExecutor ex = executor(config(null, true), true);
+
+        ex.upsertGroup(new GroupState("g1", "eng", true, null, List.of("r-1")));
+
+        assertThat(ex.changes()).containsExactly(MappingChange.link(ResourceType.GROUP, "g1", "gr-1"));
     }
 
     @Test

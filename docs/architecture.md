@@ -92,8 +92,8 @@ PENDING ──newer change for the same object──► SUPERSEDED
 
 | Situation | Behaviour |
 |-----------|-----------|
-| Unknown user | `GET /Users?filter=userName eq "..."`; link if found, otherwise `POST` |
-| `409` on create | look up by `userName`, link, then update |
+| Unknown user | `GET /Users?filter=userName eq "..."`; if found, link under the same rule as a `409`, otherwise `POST` |
+| `409` on create | look up by `userName`; link and update only if its `externalId` is the Keycloak ID (or `linkExistingAccounts` is on), otherwise fail and leave it untouched |
 | Known user | `PATCH` with `replace` operations (or `PUT` if `/ServiceProviderConfig` says PATCH is unsupported) |
 | `404` on update | unlink, look up, re-create |
 | Deprovision | `PATCH active=false` (default) or `DELETE`; `404` counts as success |

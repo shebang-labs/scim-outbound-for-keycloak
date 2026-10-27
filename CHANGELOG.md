@@ -16,6 +16,8 @@ All notable changes to this project are documented here. The format follows
   `Retry-After` support, coalescing and per-object ordering.
 - Per-target scope by group, custom attribute mapping (including the enterprise extension),
   deprovisioning mode and loop protection.
+- Accounts that already exist on a target are never taken over unless they were provisioned for
+  that Keycloak user (`externalId`) or the target sets `linkExistingAccounts`.
 - Scheduled, cluster-safe reconciliation with dry run, arming and a mass-removal safety brake.
 - Admin REST API: target CRUD, test connection, status, failed rows with retry, reconciliation.
 - SSRF protection (https only, host allowlist, private address blocking), response size limits,

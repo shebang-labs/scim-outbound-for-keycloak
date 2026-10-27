@@ -15,7 +15,7 @@ class TargetConfigTest {
     private static final TargetConfig OAUTH = new TargetConfig("app", null, "https://a.example.com/scim",
             new TargetConfig.Auth(AuthType.OAUTH2_CLIENT_CREDENTIALS, null, null, null,
                     "https://a.example.com/token", "kc", "${vault.secret}", "scim.write"),
-            null, null, null, null, null, null);
+            null, null, null, null, null, null, null);
 
     @Test
     void defaultsMatchSecureDesign() {
@@ -49,7 +49,7 @@ class TargetConfigTest {
         TargetConfig.Auth a = OAUTH.auth();
         TargetConfig edited = new TargetConfig("app", null, OAUTH.baseUrl(),
                 new TargetConfig.Auth(a.type(), null, null, null, a.tokenUrl(), a.clientId(), "${vault.new}", null),
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
 
         assertThat(edited.keepMaskedSecretsFrom(OAUTH).auth().clientSecret()).isEqualTo("${vault.new}");
     }

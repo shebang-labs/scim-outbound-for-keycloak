@@ -86,6 +86,21 @@ creation and updates need the listener.
 | `safety.removalFloor` | `10` | Removals always allowed per run. |
 | `safety.firstReconcileDryRun` | `true` | Scheduled reconciliation only reports until an admin has completed one real run. |
 | `loopProtection.ignoredClientIds` | *(none)* | Changes made through these OAuth clients (bearer token `azp`) are not sent to this target. |
+| `linkExistingAccounts` | `false` | See [Existing accounts on the target](#existing-accounts-on-the-target). |
+
+### Existing accounts on the target
+
+Before creating a user, the plugin looks it up by `userName` (groups by `displayName`). When it
+finds one, it only links to it if the account's `externalId` is the Keycloak ID of that user or
+group, which means this plugin created it (for example before a crash that lost the link).
+
+Any other match is left untouched and the change fails with "left untouched". Linking would
+otherwise overwrite the account, and later deactivate or delete it together with the Keycloak user:
+a test user named like a real one would take the real account down with it. Rename or remove
+the remote account, or, when the target already holds the same people (for example when it was
+provisioned by hand before), set `"linkExistingAccounts": true` for the first reconciliation and
+switch it off afterwards.
+
 
 ### Default attribute mapping
 

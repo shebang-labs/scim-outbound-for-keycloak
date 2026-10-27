@@ -89,7 +89,7 @@ public class SyncExecutor {
         }
         Optional<ScimUser> existing = client.findUserByUserName(desired.userName());
         if (existing.isPresent()) {
-            return linkAndUpdate(user, existing.get().id());
+            return linkAndUpdate(user, claimableUser(existing.get(), user.userId()));
         }
         ScimResponse created = client.createUser(desired);
         if (created.isSuccess()) {
@@ -101,10 +101,11 @@ public class SyncExecutor {
             return id;
         }
         if (created.outcome() == Outcome.CONFLICT) {
-            String id = client.findUserByUserName(desired.userName()).map(ScimUser::id)
-                    .orElseThrow(() -> permanent("server reported a conflict but no user with this userName"
-                            + " was found; check the target's uniqueness rules"));
-            return linkAndUpdate(user, id);
+            ScimUser found = client.findUserByUserName(desired.userName())
+                    .orElseThrow(() -> permanent("user create failed: " + created.errorSummary() + "; no account"
+                            + " with this userName exists, so another account already holds a value that must be"
+                            + " unique on the target, usually the email address"));
+            return linkAndUpdate(user, claimableUser(found, user.userId()));
         }
         throw failure("user create", created);
     }
@@ -216,7 +217,7 @@ public class SyncExecutor {
         }
         Optional<ScimGroup> existing = client.findGroupByDisplayName(group.displayName());
         if (existing.isPresent()) {
-            String id = existing.get().id();
+            String id = claimableGroup(existing.get(), group.groupId());
             link(ResourceType.GROUP, group.groupId(), id);
             replaceMembers(id, group, group.memberRemoteIds());
             return id;
@@ -230,9 +231,11 @@ public class SyncExecutor {
             return id;
         }
         if (created.outcome() == Outcome.CONFLICT) {
-            String id = lookupGroupId(group.displayName())
-                    .orElseThrow(() -> permanent("server reported a group conflict but no group with this"
-                            + " displayName was found"));
+            ScimGroup found = client.findGroupByDisplayName(group.displayName())
+                    .orElseThrow(() -> permanent("group create failed: " + created.errorSummary() + "; no group"
+                            + " with this displayName exists, so another group already holds a value that must be"
+                            + " unique on the target"));
+            String id = claimableGroup(found, group.groupId());
             link(ResourceType.GROUP, group.groupId(), id);
             replaceMembers(id, group, group.memberRemoteIds());
             return id;
@@ -327,6 +330,30 @@ public class SyncExecutor {
     }
 
     // ---- helpers -----------------------------------------------------------------------------
+
+    /**
+     * An account found by name is only taken over when it was provisioned for this Keycloak user
+     * (its externalId says so, e.g. after a crash before the link was saved) or the admin allowed
+     * taking over existing accounts. Otherwise a test user named like a real one would be linked
+     * to the real account, overwritten, and later deactivated or deleted with the test user.
+     */
+    private String claimableUser(ScimUser remote, String userId) throws ScimException {
+        if (userId.equals(remote.externalId()) || config.linkExistingAccountsOrDefault()) {
+            return remote.id();
+        }
+        throw permanent("an account with the same userName already exists on the target but was not"
+                + " provisioned for this Keycloak user, so it was left untouched; rename or remove it there,"
+                + " or set linkExistingAccounts on the target to take it over");
+    }
+
+    private String claimableGroup(ScimGroup remote, String groupId) throws ScimException {
+        if (groupId.equals(remote.externalId()) || config.linkExistingAccountsOrDefault()) {
+            return remote.id();
+        }
+        throw permanent("a group with the same displayName already exists on the target but was not"
+                + " provisioned for this Keycloak group, so it was left untouched; rename or remove it there,"
+                + " or set linkExistingAccounts on the target to take it over");
+    }
 
     private void link(ResourceType type, String localId, String remoteId) {
         changes.add(MappingChange.link(type, localId, remoteId));

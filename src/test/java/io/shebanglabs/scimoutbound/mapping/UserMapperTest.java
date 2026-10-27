@@ -25,7 +25,7 @@ import org.mockito.Mockito;
 class UserMapperTest {
 
     private static TargetConfig config(Map<String, String> custom) {
-        return new TargetConfig("t", null, "https://x", null, null, null, null, custom, null, null);
+        return new TargetConfig("t", null, "https://x", null, null, null, null, custom, null, null, null);
     }
 
     private static UserModel alice() {

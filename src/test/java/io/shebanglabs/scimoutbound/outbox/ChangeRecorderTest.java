@@ -46,7 +46,7 @@ class ChangeRecorderTest {
                 mock(IdMappingRepository.class));
         when(realm.getId()).thenReturn("realm-1");
         TargetConfig config = new TargetConfig("app", true, "https://app.example.com/scim/v2", null, null, true,
-                null, null, null, null);
+                null, null, null, null, null);
         when(targets.listEnabledByRealm("realm-1"))
                 .thenReturn(List.of(new ScimTarget("target-1", "realm-1", config, false, null, null, 0, 0)));
     }

@@ -113,18 +113,38 @@ class UserProvisioningIT {
     }
 
     @Test
-    void existingRemoteUserIsLinkedNotDuplicated() {
+    void existingRemoteUserIsOnlyLinkedWhenItBelongsToTheKeycloakUser() {
+        stubRemoteBob("someone-else");
+
+        String bobId = createUser("bob", "bob@acme.test");
+
+        // someone else's account with the same userName: neither updated nor duplicated
+        await().atMost(WAIT).untilAsserted(() -> assertThat(
+                env.api("GET", REALM, "targets/" + targetId + "/failed", null).json()).hasSize(1));
+        var failed = env.api("GET", REALM, "targets/" + targetId + "/failed", null).json().get(0);
+        assertThat(failed.path("resourceId").asText()).isEqualTo(bobId);
+        assertThat(failed.path("lastError").asText()).contains("left untouched");
+        assertThat(env.scim().find(patchRequestedFor(urlEqualTo("/scim/v2/Users/remote-bob")))).isEmpty();
+        assertThat(env.scim().find(postRequestedFor(urlEqualTo("/scim/v2/Users"))
+                .withRequestBody(matchingJsonPath("$.userName", equalTo("bob"))))).isEmpty();
+
+        // the account turns out to be the one provisioned for bob: a retry links it
+        stubRemoteBob(bobId);
+        assertThat(env.api("POST", REALM, "targets/" + targetId + "/failed/" + failed.path("id").asText()
+                + "/retry", null).status()).isEqualTo(204);
+        env.api("POST", REALM, "worker/run", null);
+        await().atMost(WAIT).untilAsserted(() -> env.scim().verifyThat(
+                patchRequestedFor(urlEqualTo("/scim/v2/Users/remote-bob"))));
+        await().atMost(WAIT).untilAsserted(() -> assertThat(
+                env.api("GET", REALM, "targets/" + targetId + "/failed", null).json()).isEmpty());
+    }
+
+    private static void stubRemoteBob(String externalId) {
         env.scim().register(com.github.tomakehurst.wiremock.client.WireMock.get(urlEqualTo(
                 "/scim/v2/Users?filter=userName%20eq%20%22bob%22")).atPriority(1)
                 .willReturn(aResponse().withStatus(200).withHeader("Content-Type", "application/scim+json")
-                        .withBody("{\"totalResults\":1,\"Resources\":[{\"id\":\"remote-bob\",\"userName\":\"bob\"}]}")));
-
-        createUser("bob", "bob@acme.test");
-
-        await().atMost(WAIT).untilAsserted(() -> env.scim().verifyThat(
-                patchRequestedFor(urlEqualTo("/scim/v2/Users/remote-bob"))));
-        assertThat(env.scim().find(postRequestedFor(urlEqualTo("/scim/v2/Users"))
-                .withRequestBody(matchingJsonPath("$.userName", equalTo("bob"))))).isEmpty();
+                        .withBody("{\"totalResults\":1,\"Resources\":[{\"id\":\"remote-bob\",\"externalId\":\""
+                                + externalId + "\",\"userName\":\"bob\"}]}")));
     }
 
     @Test

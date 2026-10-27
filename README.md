@@ -24,7 +24,8 @@ are switched off everywhere when someone leaves.
   the same transaction as the Keycloak change and sent afterwards by a background worker with
   retries, backoff and `Retry-After` support. **A slow or broken application never slows down
   or breaks logins or admin actions.**
-- **Correct SCIM**: look up before create, 409 becomes a link, PATCH with PUT fallback
+- **Correct SCIM**: look up before create, 409 becomes a link to the account the plugin created
+  (never a takeover of someone else's account, unless allowed), PATCH with PUT fallback
   (discovered through `/ServiceProviderConfig`), 404 handling, idempotent retries, per-object
   ordering and coalescing of rapid edits.
 - **Reconciliation**: scheduled, cluster-safe comparison that provisions existing users and repairs
