@@ -27,9 +27,9 @@ The plugin opens no port and accepts no webhooks.
 | Personal data in logs | Logs contain ids, methods, paths without queries and status codes only; bodies and application error texts are never logged (permanent failures point to the admin API instead). |
 | Personal data in the database | The outbox stores ids only; stored error text is truncated and stripped of control characters, and non-SCIM error bodies are never stored. |
 | Cross-realm leakage | Every row, mapping and target carries its realm; the admin API filters by realm; the worker loads data from the row's realm only; covered by integration tests. |
-| Mass deactivation by misconfiguration | Deactivate (not delete) by default; reconciliation safety brake; first reconciliation is a dry run; a scope that resolves to no groups fails instead of excluding everybody. |
+| Mass deactivation by misconfiguration | Deactivate (not delete) by default; reconciliation safety brake; first reconciliation is a dry run; a scope with any group that no longer exists stops scope decisions instead of deprovisioning that group's members. |
 | Provisioning loops | `loopProtection.ignoredClientIds`. |
-| Denial of service against Keycloak | No I/O in transactions or on the login path; bounded batches; single worker thread per node; timeouts; recording failures never break Keycloak actions, and IDs that do not fit the outbox are skipped instead of failing the Keycloak transaction. |
+| Denial of service against Keycloak | No I/O in transactions or on the login path; bounded batches; single worker thread per node; timeouts; a target that stops answering gets its remaining rows postponed so it cannot hold up the others; one reconciliation per target at a time, with upper bounds on users held in memory; IDs that do not fit the outbox are skipped instead of failing the Keycloak transaction. |
 | Tampered release | Signed artifacts, checksums, SBOM and build provenance (see [releasing](releasing.md)). |
 
 ## Residual risks

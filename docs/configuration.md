@@ -81,7 +81,7 @@ creation and updates need the listener.
 | `auth.tokenUrl`, `auth.clientId`, `auth.clientSecret`, `auth.scope` | for OAuth2 | Client credentials grant with `client_secret_basic`. |
 | `deprovision` | `DEACTIVATE` | `DEACTIVATE` (`active=false`, reversible) or `DELETE`. |
 | `syncGroups` | `false` | Also provision groups and memberships. Servers that do not return group members (such as AWS IAM Identity Center) are asked for the users that are members instead; a server that can do neither only gets missing members added by reconciliation, and removals rely on membership events. |
-| `scope.groups` | *(all users)* | Group paths. Only members (including through sub-groups) are provisioned; with group sync, only these groups and their sub-groups. Users who leave the scope are deprovisioned. |
+| `scope.groups` | *(all users)* | Group paths. Only members (including through sub-groups) are provisioned; with group sync, only these groups and their sub-groups. Users who leave the scope are deprovisioned. If any listed group no longer exists (renamed, moved or deleted), the target stops making scope decisions and reports the missing path until it is fixed; deletions of Keycloak users still go through. |
 | `customAttributes` | *(none)* | Map of SCIM attribute to Keycloak user attribute. Supported SCIM attributes: `title`, `preferredLanguage`, `locale`, `enterprise.employeeNumber`, `enterprise.costCenter`, `enterprise.organization`, `enterprise.division`, `enterprise.department`. |
 | `safety.maxRemovalPercent` | `5` | Reconciliation removals above the floor may not exceed this share of managed accounts. |
 | `safety.removalFloor` | `10` | Removals always allowed per run. |

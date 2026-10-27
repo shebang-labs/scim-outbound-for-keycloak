@@ -43,7 +43,7 @@ A target as returned by the API:
 | `GET /targets/{id}/failed?first=0&max=50` | view-realm | Failed rows: id, resource type and id, operation, attempts, sanitised `lastError`. |
 | `POST /targets/{id}/failed/{rowId}/retry` | manage-realm | Put one failed row back to `PENDING` (with a fresh retry window). |
 | `POST /targets/{id}/failed/retry-all` | manage-realm | Requeue all failed rows: `{"requeued": 12}`. |
-| `POST /targets/{id}/reconcile?dryRun=true` | manage-realm | Start a reconciliation in the background (`202`). `dryRun` defaults to `true`. The report appears in `status.lastReconcileSummary`. |
+| `POST /targets/{id}/reconcile?dryRun=true` | manage-realm | Start a reconciliation in the background (`202`), or `409` if one is already queued or running for this target. `dryRun` defaults to `true`. The report appears in `status.lastReconcileSummary`. |
 | `POST /worker/run` | manage-realm | Ask the worker to run now instead of at its next tick (`202`). |
 
 ### Reconciliation report

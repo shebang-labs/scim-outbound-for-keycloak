@@ -165,6 +165,23 @@ public class OutboxRepository {
         }
     }
 
+    /**
+     * Gives claimed rows back without counting an attempt, for rows a worker decided not to
+     * process in this round.
+     */
+    public int unclaim(List<String> ids, long nextAttemptAt, long now) {
+        if (ids.isEmpty()) {
+            return 0;
+        }
+        return em.createNamedQuery("scimOutbox.unclaim")
+                .setParameter("pending", OutboxStatus.PENDING)
+                .setParameter("nextAttemptAt", nextAttemptAt)
+                .setParameter("now", now)
+                .setParameter("ids", ids)
+                .setParameter("inProgress", OutboxStatus.IN_PROGRESS)
+                .executeUpdate();
+    }
+
     /** Returns IN_PROGRESS rows whose worker vanished (node crash) to PENDING. */
     public int releaseStale(long staleBefore, long now) {
         return em.createNamedQuery("scimOutbox.releaseStale")

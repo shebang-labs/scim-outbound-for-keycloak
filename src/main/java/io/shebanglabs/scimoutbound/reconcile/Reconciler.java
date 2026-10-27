@@ -56,6 +56,8 @@ public class Reconciler {
 
     private static final Logger LOG = Logger.getLogger(Reconciler.class);
     static final int LOCAL_PAGE = 500;
+    /** Upper bound on Keycloak users held in memory by one run, so a huge realm cannot exhaust the heap. */
+    static final int MAX_LOCAL_USERS = 500_000;
 
     private final KeycloakSessionFactory factory;
     private final ServerConfig serverConfig;
@@ -138,7 +140,8 @@ public class Reconciler {
         LocalSide local = readLocalSide(target);
         if (local.scopeMisconfigured()) {
             return ReconcileReport.failed(targetId, dryRun, started, clock.millis(),
-                    "none of the target's scope groups exist; nothing was changed");
+                    "a scope group does not exist (renamed, moved or deleted?): fix scope.groups;"
+                            + " nothing was changed");
         }
         UserPlan plan = ReconcilePlanner.planUsers(local.users(), remote, local.orphans());
         int removals = plan.removals() + local.orphanGroups().size();
@@ -174,7 +177,7 @@ public class Reconciler {
             List<String> groups, List<String> orphanGroups, boolean scopeMisconfigured) {
     }
 
-    private LocalSide readLocalSide(ScimTarget target) {
+    private LocalSide readLocalSide(ScimTarget target) throws ScimException {
         List<LocalUser> users = new ArrayList<>();
         boolean[] misconfigured = {false};
         // users, one page per transaction
@@ -193,6 +196,9 @@ public class Reconciler {
                         .toList();
             });
             users.addAll(page);
+            if (users.size() > MAX_LOCAL_USERS) {
+                throw new ScimException("realm has more than " + MAX_LOCAL_USERS + " users; aborting", null, false);
+            }
             if (page.size() < LOCAL_PAGE || misconfigured[0]) {
                 break;
             }

@@ -15,14 +15,18 @@ import io.shebanglabs.scimoutbound.jpa.OutboxRepository;
 import io.shebanglabs.scimoutbound.jpa.TargetRepository;
 import io.shebanglabs.scimoutbound.metrics.ScimMetrics;
 import io.shebanglabs.scimoutbound.outbox.Backoff;
+import io.shebanglabs.scimoutbound.outbox.Operation;
 import io.shebanglabs.scimoutbound.outbox.OutboxRow;
 import io.shebanglabs.scimoutbound.outbox.OutboxStatus;
 import jakarta.persistence.EntityManager;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
 import org.jboss.logging.Logger;
 import org.keycloak.connections.jpa.JpaConnectionProvider;
@@ -45,6 +49,8 @@ public class OutboxWorker {
 
     private static final Logger LOG = Logger.getLogger(OutboxWorker.class);
     static final Duration HOUSEKEEPING_INTERVAL = Duration.ofMinutes(10);
+    /** How long rows of a target that just failed to answer wait before they are tried again. */
+    static final Duration UNREACHABLE_PAUSE = Duration.ofSeconds(30);
 
     private final KeycloakSessionFactory factory;
     private final ServerConfig config;
@@ -93,7 +99,9 @@ public class OutboxWorker {
         long deadline = clock.millis() + budget.toMillis();
         int processed = 0;
         housekeepingIfDue();
+        refreshQueueMetrics();
         while (clock.millis() < deadline) {
+            long claimedAt = clock.millis();
             List<OutboxRow> rows = KeycloakModelUtils.runJobInTransactionWithResult(factory, session -> {
                 OutboxRepository outbox = new OutboxRepository(em(session));
                 long now = clock.millis();
@@ -106,16 +114,33 @@ public class OutboxWorker {
             if (rows.isEmpty()) {
                 break;
             }
+            // one target that times out must not hold up the others: the rest of its rows wait for
+            // the next round, and rows still waiting when the claim gets old are released before
+            // another node may take them over
+            Set<String> unreachable = new HashSet<>();
+            List<String> later = new ArrayList<>();
+            List<String> released = new ArrayList<>();
             for (OutboxRow row : rows) {
-                process(row);
-                processed++;
+                if (clock.millis() - claimedAt > config.claimTimeout().toMillis() / 2) {
+                    released.add(row.id());
+                } else if (unreachable.contains(row.targetId())) {
+                    later.add(row.id());
+                } else {
+                    if (!process(row)) {
+                        unreachable.add(row.targetId());
+                    }
+                    processed++;
+                }
             }
+            unclaim(later, UNREACHABLE_PAUSE);
+            unclaim(released, Duration.ZERO);
         }
         refreshQueueMetrics();
         return processed;
     }
 
-    void process(OutboxRow row) {
+    /** @return {@code false} when the target did not answer (network error, timeout or 429) */
+    boolean process(OutboxRow row) {
         long started = clock.millis();
         Work work;
         try {
@@ -124,11 +149,17 @@ public class OutboxWorker {
             LOG.debugf(e, "preparing outbox row %s failed", row.id());
             finish(row, null, Optional.of(new ScimException("could not load data: " + e.getClass().getSimpleName(),
                     e, true)), started);
-            return;
+            return true;
         }
         switch (work) {
-            case Work.Skip skip -> complete(row, OutboxStatus.SUPERSEDED, skip.reason(), List.of(), started);
-            case Work.Fail fail -> complete(row, OutboxStatus.FAILED, fail.reason(), List.of(), started);
+            case Work.Skip skip -> {
+                complete(row, OutboxStatus.SUPERSEDED, skip.reason(), List.of(), started);
+                return true;
+            }
+            case Work.Fail fail -> {
+                complete(row, OutboxStatus.FAILED, fail.reason(), List.of(), started);
+                return true;
+            }
             case Work.Run run -> {
                 SyncExecutor executor = null;
                 Optional<ScimException> error = Optional.empty();
@@ -144,8 +175,23 @@ public class OutboxWorker {
                             true));
                 }
                 finish(row, executor == null ? List.of() : executor.changes(), error, started);
+                return error.map(OutboxWorker::targetAnswered).orElse(true);
             }
         }
+    }
+
+    static boolean targetAnswered(ScimException e) {
+        return !e.isRetryable() || e.response().map(r -> r.status() != 429).orElse(false);
+    }
+
+    private void unclaim(List<String> ids, Duration delay) {
+        if (ids.isEmpty()) {
+            return;
+        }
+        KeycloakModelUtils.runJobInTransaction(factory, session -> {
+            long now = clock.millis();
+            new OutboxRepository(em(session)).unclaim(ids, now + delay.toMillis(), now);
+        });
     }
 
     private Work prepare(KeycloakSession session, OutboxRow row) {
@@ -163,8 +209,11 @@ public class OutboxWorker {
         }
         session.getContext().setRealm(realm);
         SyncLoader loader = new SyncLoader(session, realm, target, new IdMappingRepository(em(session)));
-        if (loader.scope().isMisconfigured()) {
-            return new Work.Fail("none of the target's scope groups exist; fix scope.groups");
+        // a user or group deleted in Keycloak goes regardless of scope; anything that decides by
+        // scope waits until a broken scope is fixed
+        boolean deletion = row.operation() == Operation.DELETE;
+        if (loader.scope().isMisconfigured() && !deletion) {
+            return new Work.Fail(loader.scope().problem() + ", then retry the failed rows");
         }
         ScimClient client;
         try {

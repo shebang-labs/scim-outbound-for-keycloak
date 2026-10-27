@@ -273,7 +273,9 @@ public class ScimAdminResource {
         if (provider.targets().get(realm.getId(), id).isEmpty()) {
             return notFound();
         }
-        factory.triggerReconcile(id, dryRun);
+        if (factory.triggerReconcile(id, dryRun).isEmpty()) {
+            return error(Response.Status.CONFLICT, "a reconciliation of this target is already queued or running");
+        }
         audit(OperationType.ACTION, null);
         return Response.accepted().type(MediaType.APPLICATION_JSON)
                 .entity(ScimJson.write(Map.of("accepted", true, "dryRun", dryRun))).build();
@@ -282,10 +284,12 @@ public class ScimAdminResource {
     /** Asks the worker to run now instead of waiting for its next tick (useful after a fix). */
     @POST
     @Path("worker/run")
+    @Produces(MediaType.APPLICATION_JSON)
     public Response runWorker() {
         auth.realm().requireManageRealm();
         factory.triggerDrain();
-        return Response.accepted().build();
+        // Keycloak's security headers filter rejects a non-204 response without a media type
+        return json(Response.Status.ACCEPTED, Map.of("accepted", true));
     }
 
     // ---- helpers -----------------------------------------------------------------------------

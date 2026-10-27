@@ -28,6 +28,7 @@ kc.sh start --log-level=INFO,io.shebanglabs.scimoutbound:debug
 | `... must be a vault reference such as ${vault.scim-my-key}` | Store the secret in the vault, or set `allow-plaintext-secrets=true` (not recommended). |
 | `vault key must start with 'scim-'` | Name the vault entry with the prefix (files vault: `<realm>_scim-...`), or change `vault-key-prefix`. |
 | `baseUrl points to another host: enter auth.token ... again` | Moving a target to another host needs its secret again: send the vault reference instead of `**********`. |
+| `scope group(s) not found: /...` | A scope group was renamed, moved or deleted. Fix `scope.groups`, then `POST .../failed/retry-all`. |
 | `configuration is too large` | The JSON exceeds 4000 characters, usually a very long scope list. |
 
 ## Rows fail

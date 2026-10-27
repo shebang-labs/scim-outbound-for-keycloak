@@ -45,6 +45,10 @@ import jakarta.persistence.Table;
                     + " where o.targetId = :targetId and o.resourceType = :resourceType"
                     + " and o.resourceId = :resourceId and o.operation in :operations"
                     + " and o.relatedId = :relatedId and o.status in :claimable"),
+    @NamedQuery(name = "scimOutbox.unclaim",
+            query = "update OutboxEntity o set o.status = :pending, o.claimedAt = null, o.attempts = o.attempts - 1,"
+                    + " o.nextAttemptAt = :nextAttemptAt, o.updatedAt = :now"
+                    + " where o.id in :ids and o.status = :inProgress"),
     @NamedQuery(name = "scimOutbox.releaseStale",
             query = "update OutboxEntity o set o.status = :pending, o.claimedAt = null, o.updatedAt = :now"
                     + " where o.status = :inProgress and o.claimedAt < :staleBefore"),

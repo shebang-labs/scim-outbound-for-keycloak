@@ -21,7 +21,10 @@ import io.shebanglabs.scimoutbound.worker.OutboxWorker;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -55,6 +58,8 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
 
     private final Clock clock = Clock.systemUTC();
     private final AtomicBoolean draining = new AtomicBoolean();
+    private final AtomicBoolean shuttingDown = new AtomicBoolean();
+    private final Set<String> reconciling = ConcurrentHashMap.newKeySet();
     private ServerConfig serverConfig = ServerConfig.defaults();
     private HostPolicy hostPolicy;
     private TokenCache tokenCache;
@@ -98,11 +103,12 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
         }
     }
 
-
-
     @Override
     public void postInit(KeycloakSessionFactory factory) {
         this.sessionFactory = factory;
+        // Keycloak stops its caches before it closes providers, so close() is too late to keep a
+        // timer tick away from them; JVM shutdown hooks start first
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> shuttingDown.set(true), "scim-outbound-shutdown"));
         this.executor = Executors.newSingleThreadExecutor(r -> daemon(r, "scim-outbound-worker"));
         this.reconcileExecutor = Executors.newSingleThreadExecutor(r -> daemon(r, "scim-outbound-reconcile"));
         factory.register(new ModelEventListener());
@@ -129,7 +135,8 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
                     return WORKER_TASK;
                 }
             };
-            timer.schedule(new ClusterAwareScheduledTaskRunner(factory, trigger, interval), interval, WORKER_TASK);
+            timer.schedule(unlessShuttingDown(new ClusterAwareScheduledTaskRunner(factory, trigger, interval)),
+                    interval, WORKER_TASK);
             long reconcileInterval = serverConfig.reconcileInterval().toMillis();
             if (reconcileInterval > 0) {
                 ScheduledTask reconcile = new ScheduledTask() {
@@ -143,11 +150,20 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
                         return RECONCILE_TASK;
                     }
                 };
-                timer.schedule(new ClusterAwareScheduledTaskRunner(factory, reconcile, reconcileInterval),
-                        reconcileInterval, RECONCILE_TASK);
+                timer.schedule(unlessShuttingDown(new ClusterAwareScheduledTaskRunner(factory, reconcile,
+                        reconcileInterval)), reconcileInterval, RECONCILE_TASK);
             }
         });
         LOG.debug("scim-outbound background tasks scheduled");
+    }
+
+    /** A tick during shutdown would reach caches Keycloak has already stopped, and log an error. */
+    private Runnable unlessShuttingDown(Runnable task) {
+        return () -> {
+            if (!shuttingDown.get()) {
+                task.run();
+            }
+        };
     }
 
     /**
@@ -176,12 +192,27 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
     }
 
     /** Runs a reconciliation of one target in the background. */
-    public CompletableFuture<ReconcileReport> triggerReconcile(String targetId, boolean dryRun) {
-        return CompletableFuture.supplyAsync(() -> {
-            ReconcileReport report = reconciler().run(targetId, dryRun, true);
-            triggerDrain();
-            return report;
-        }, reconcileExecutor);
+    public Optional<CompletableFuture<ReconcileReport>> triggerReconcile(String targetId, boolean dryRun) {
+        // one queued or running reconciliation per target: each reads every user on both sides, so
+        // repeated requests must not pile up
+        if (!reconciling.add(targetId)) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(CompletableFuture.supplyAsync(() -> {
+                ReconcileReport report;
+                try {
+                    report = reconciler().run(targetId, dryRun, true);
+                } finally {
+                    reconciling.remove(targetId);
+                }
+                triggerDrain();
+                return report;
+            }, reconcileExecutor));
+        } catch (RejectedExecutionException e) {
+            reconciling.remove(targetId);
+            throw e;
+        }
     }
 
     Reconciler reconciler() {
@@ -306,6 +337,17 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
 
     @Override
     public void close() {
+        // stop the timer first: a tick that fires after Keycloak has stopped its caches makes the
+        // cluster-aware runner log an error during every shutdown
+        if (sessionFactory != null) {
+            try (KeycloakSession session = sessionFactory.create()) {
+                TimerProvider timer = session.getProvider(TimerProvider.class);
+                timer.cancelTask(WORKER_TASK);
+                timer.cancelTask(RECONCILE_TASK);
+            } catch (RuntimeException e) {
+                LOG.debug("could not cancel scim-outbound timer tasks during shutdown", e);
+            }
+        }
         if (executor != null) {
             executor.shutdownNow();
         }

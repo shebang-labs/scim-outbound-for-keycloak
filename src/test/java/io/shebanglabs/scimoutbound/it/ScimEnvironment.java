@@ -138,8 +138,18 @@ public final class ScimEnvironment implements AutoCloseable {
         if (admin != null) {
             admin.close();
         }
+        // dev mode only logs some errors that production mode turns into HTTP 500s (for example a
+        // response without a media type), so the log is checked before the container goes away
+        String logs = keycloak.isRunning() ? keycloak.getLogs() : "";
         keycloak.stop();
         wiremock.stop();
         network.close();
+        for (String marker : List.of("Uncaught server error", "MediaType not set")) {
+            if (logs.contains(marker)) {
+                throw new AssertionError("Keycloak logged '" + marker + "':\n"
+                        + logs.substring(Math.max(0, logs.indexOf(marker) - 300),
+                                Math.min(logs.length(), logs.indexOf(marker) + 1500)));
+            }
+        }
     }
 }
