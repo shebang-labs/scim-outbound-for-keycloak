@@ -11,6 +11,19 @@
 
 Downgrades are not supported once a newer version has migrated the tables.
 
+### Keycloak on a private network
+
+- **Egress proxy.** The plugin sends its requests through Keycloak's shared HTTP client, so
+  Keycloak's own proxy setting applies to it: for example
+  `--spi-connections-http-client--default--proxy-mappings='.*;http://proxy.internal:3128'`. Requests
+  to HTTPS targets go through the proxy as a `CONNECT` tunnel; TLS stays end to end, and the
+  target's certificate is checked by Keycloak, not by the proxy.
+- **List the targets in `allowed-hosts`.** A host on that list is not resolved by the plugin's
+  address check, which matters when the Keycloak host cannot resolve public names itself (all DNS
+  happens at the proxy) and lets internal applications on private addresses be targets without
+  `allow-private-addresses`.
+- **Internal certificate authorities.** Add them to Keycloak's truststore (`truststore-paths`).
+
 ## Monitoring
 
 Start Keycloak with `--metrics-enabled=true`; metrics appear on the management interface

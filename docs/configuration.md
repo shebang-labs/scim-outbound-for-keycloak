@@ -102,7 +102,6 @@ the remote account, or, when the target already holds the same people (for examp
 provisioned by hand before), set `"linkExistingAccounts": true` for the first reconciliation and
 switch it off afterwards.
 
-
 ### Default attribute mapping
 
 | Keycloak | SCIM |
@@ -127,3 +126,19 @@ the `vault-key-prefix` (default `scim-`).
 
 With the files vault, `${vault.scim-app-a-token}` in realm `acme` is read from the file
 `acme_scim-app-a-token` in the vault directory.
+
+**Secrets kept in an external secret manager** (1Password, HashiCorp Vault, AWS Secrets
+Manager, ...) stay there: have the manager's own tooling write each secret as a file into the vault
+directory, and the manager remains the source of truth. The file is read on every use, so a
+rotated secret applies to the next request without restarting Keycloak.
+
+- **Kubernetes**: sync the secret into a Kubernetes `Secret` (for example with the 1Password
+  Operator or External Secrets Operator) and mount it as a volume at the vault directory, using
+  `items` to name the file `<realm>_scim-<key>`. Do not mount it with `subPath`: such mounts are not
+  updated when the secret changes.
+- **Virtual machines and Docker**: write the file when deploying, for example
+  `op read "op://<vault>/<item>/token" > /opt/keycloak/vault/acme_scim-app-a-token`, owned by the
+  Keycloak user with mode `0400`.
+
+Terraform or any other tool that creates targets only ever handles the `${vault.<key>}` reference,
+never the secret.
