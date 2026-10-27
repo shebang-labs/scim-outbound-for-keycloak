@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-27
+
+First release.
+
 ### Added
 
 - Outbound SCIM 2.0 provisioning of users (create, update, disable, deactivate or delete).
@@ -31,4 +35,5 @@ All notable changes to this project are documented here. The format follows
 - Micrometer metrics.
 - Docker-compose demo, documentation, CI, CodeQL, SBOM and release pipeline.
 
-[Unreleased]: https://github.com/shebang-labs/scim-outbound-for-keycloak/commits/main
+[Unreleased]: https://github.com/shebang-labs/scim-outbound-for-keycloak/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/shebang-labs/scim-outbound-for-keycloak/releases/tag/v0.1.0
