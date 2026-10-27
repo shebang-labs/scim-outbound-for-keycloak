@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Release builds are reproducible byte for byte: the release workflow no longer lets
+  `versions:set` write the build time into the `pom.xml` embedded in the jar. In 0.1.0 that file
+  differs from a rebuild; every class file is identical.
+
 ## [0.1.0] - 2026-10-27
 
 First release.

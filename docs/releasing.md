@@ -66,8 +66,18 @@ Optional, for Maven Central and signed artifacts:
 | sources and javadoc jars | On Maven Central (when configured). |
 | provenance attestation | `gh attestation verify scim-outbound-for-keycloak-X.Y.Z.jar -R <org>/scim-outbound-for-keycloak` |
 
-Builds are reproducible: the build timestamp is fixed (`project.build.outputTimestamp`), so
-anyone can rebuild a tag and compare checksums.
+Builds are reproducible: the build timestamp is fixed to the tagged commit's time, so anyone can
+rebuild a tag with Java 21 and get a byte-identical jar:
+
+```bash
+git checkout vX.Y.Z
+./mvnw versions:set -DnewVersion=X.Y.Z -DupdateBuildOutputTimestampPolicy=never
+./mvnw clean package -DskipTests -Dproject.build.outputTimestamp="$(git log -1 --format=%cI)"
+sha256sum target/scim-outbound-for-keycloak-X.Y.Z.jar   # compare with the release's .sha256
+```
+
+Releases before 0.1.1 match in every class file, but their embedded `pom.xml` records the time the
+release was built, so their checksum differs from a rebuild.
 
 ## Security releases
 
