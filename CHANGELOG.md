@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Docker example (`examples/docker`): a Dockerfile that builds Keycloak with the plugin from the
+  release (checksum verified), and a Compose file with PostgreSQL and a files vault. The server
+  needs Docker only.
+
 ### Fixed
 
 - Release builds are reproducible byte for byte: the release workflow no longer lets

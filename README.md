@@ -50,12 +50,18 @@ every release is tested against the versions in this table. Check it before upgr
 
 ## Quick start
 
+Running Keycloak in Docker? Use the [Docker example](examples/docker/README.md): it builds a
+Keycloak image with the plugin, and the server needs nothing but Docker.
+
 ```bash
-# 1. Build (or download a release and verify its checksum/signature)
-./mvnw -DskipITs package
+# 1. Download the release and verify it (or build it yourself: ./mvnw -DskipITs package)
+V=0.1.0
+curl -fLO https://github.com/shebang-labs/scim-outbound-for-keycloak/releases/download/v$V/scim-outbound-for-keycloak-$V.jar
+curl -fLO https://github.com/shebang-labs/scim-outbound-for-keycloak/releases/download/v$V/scim-outbound-for-keycloak-$V.jar.sha256
+sha256sum -c scim-outbound-for-keycloak-$V.jar.sha256
 
 # 2. Install into Keycloak and rebuild the optimized server
-cp target/scim-outbound-for-keycloak-*.jar /opt/keycloak/providers/
+cp scim-outbound-for-keycloak-$V.jar /opt/keycloak/providers/
 /opt/keycloak/bin/kc.sh build
 
 # 3. Start Keycloak (optionally restrict where targets may point)
