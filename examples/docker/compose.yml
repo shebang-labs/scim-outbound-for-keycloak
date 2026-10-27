@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Keycloak with the SCIM outbound plugin and PostgreSQL. Values come from a .env file next to
+# this file (see README.md); never commit it. Put TLS in front of port 8080 with your reverse proxy.
+name: keycloak-scim
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: ${KC_DB_PASSWORD:?set KC_DB_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keycloak"]
+      interval: 5s
+      retries: 30
+
+  keycloak:
+    build: .
+    image: keycloak-scim:26.8.1-0.1.0
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KC_DB_PASSWORD:?set KC_DB_PASSWORD in .env}
+      # public URL of Keycloak, behind a reverse proxy that terminates TLS
+      KC_HOSTNAME: ${KC_HOSTNAME:?set KC_HOSTNAME in .env}
+      KC_PROXY_HEADERS: xforwarded
+      KC_HTTP_ENABLED: "true"
+      # only used on the very first start, to create the temporary admin user
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_BOOTSTRAP_ADMIN_USERNAME:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?set KC_BOOTSTRAP_ADMIN_PASSWORD in .env}
+      # target secrets: files named <realm>_scim-<key>, referenced as ${vault.scim-<key>}
+      KC_VAULT_DIR: /opt/keycloak/vault
+      # the only hosts targets may point to, e.g. scim.us-east-1.amazonaws.com
+      KC_SPI_SCIM_OUTBOUND__DEFAULT__ALLOWED_HOSTS: ${SCIM_ALLOWED_HOSTS:?set SCIM_ALLOWED_HOSTS in .env}
+      # on a private network that reaches the internet through a proxy:
+      # KC_SPI_CONNECTIONS_HTTP_CLIENT__DEFAULT__PROXY_MAPPINGS: ".*;http://proxy.internal:3128"
+    volumes:
+      - ./vault:/opt/keycloak/vault:ro
+    ports:
+      - "127.0.0.1:8080:8080"   # HTTP for the reverse proxy on this host
+      - "127.0.0.1:9000:9000"   # health and metrics, not public
+
+volumes:
+  postgres-data:

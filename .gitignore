@@ -24,3 +24,6 @@ Thumbs.db
 *.p12
 *.jks
 *.pem
+
+# Secrets of the Docker example (target tokens in its files vault)
+examples/docker/vault/
