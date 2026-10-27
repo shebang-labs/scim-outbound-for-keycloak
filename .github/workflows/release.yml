@@ -1,9 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
-# Publishes a release when a tag vX.Y.Z is pushed: full test suite, signed artifacts on Maven
-# Central, and a GitHub Release with the jar, checksums, SBOM and build provenance.
-#
-# Repository secrets required (see docs/releasing.md):
+# Publishes a release when a tag vX.Y.Z is pushed: full test suite and a GitHub Release with the
+# jar, checksums, SBOM and build provenance. When the release environment also holds these
+# secrets, the artifacts are signed and published to Maven Central too (see docs/releasing.md):
 #   CENTRAL_USERNAME, CENTRAL_PASSWORD   Maven Central Portal user token
 #   GPG_PRIVATE_KEY, GPG_PASSPHRASE      release signing key
 name: Release
@@ -19,6 +18,9 @@ jobs:
   release:
     runs-on: ubuntu-latest
     environment: release
+    env:
+      # Maven Central and GPG signing are optional until their secrets are configured
+      PUBLISH_TO_CENTRAL: ${{ secrets.CENTRAL_USERNAME != '' && secrets.GPG_PRIVATE_KEY != '' }}
     permissions:
       contents: write        # create the GitHub Release
       id-token: write        # sign the build provenance attestation
@@ -49,6 +51,7 @@ jobs:
         run: ./mvnw -B -ntp verify -Dproject.build.outputTimestamp="$OUTPUT_TIMESTAMP"
 
       - name: Sign and publish to Maven Central
+        if: env.PUBLISH_TO_CENTRAL == 'true'
         env:
           CENTRAL_USERNAME: ${{ secrets.CENTRAL_USERNAME }}
           CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
@@ -71,10 +74,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          base="target/scim-outbound-for-keycloak-$VERSION"
+          files=("$base.jar" "$base.jar.sha256" "$base-sbom.json" "$base-sbom.json.sha256")
+          # the GPG signature only exists when the artifacts were signed for Maven Central
+          if [ -f "$base.jar.asc" ]; then
+            files+=("$base.jar.asc")
+          fi
+          changelog="https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md"
           gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --verify-tag \
-            --notes "See [CHANGELOG.md](CHANGELOG.md) for details. Verify downloads with the .sha256 and .asc files or \`gh attestation verify\`." \
-            target/scim-outbound-for-keycloak-$VERSION.jar \
-            target/scim-outbound-for-keycloak-$VERSION.jar.asc \
-            target/scim-outbound-for-keycloak-$VERSION.jar.sha256 \
-            target/scim-outbound-for-keycloak-$VERSION-sbom.json \
-            target/scim-outbound-for-keycloak-$VERSION-sbom.json.sha256
+            --notes "See the [changelog]($changelog) for details. Verify a download with its \`.sha256\` file and \`gh attestation verify scim-outbound-for-keycloak-$VERSION.jar -R $GITHUB_REPOSITORY\`." \
+            "${files[@]}"
