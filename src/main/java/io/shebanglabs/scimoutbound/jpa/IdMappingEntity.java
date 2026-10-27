@@ -59,7 +59,7 @@ public class IdMappingEntity {
     @Column(name = "RESOURCE_TYPE", length = 16, nullable = false)
     private ResourceType resourceType;
 
-    @Column(name = "LOCAL_ID", length = 36, nullable = false)
+    @Column(name = "LOCAL_ID", length = 255, nullable = false)
     private String localId;
 
     @Column(name = "REMOTE_ID", length = 255, nullable = false)

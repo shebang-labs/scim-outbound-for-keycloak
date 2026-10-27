@@ -28,7 +28,7 @@ The plugin opens no port and accepts no webhooks.
 | Cross-realm leakage | Every row, mapping and target carries its realm; the admin API filters by realm; the worker loads data from the row's realm only; covered by integration tests. |
 | Mass deactivation by misconfiguration | Deactivate (not delete) by default; reconciliation safety brake; first reconciliation is a dry run; a scope that resolves to no groups fails instead of excluding everybody. |
 | Provisioning loops | `loopProtection.ignoredClientIds`. |
-| Denial of service against Keycloak | No I/O in transactions or on the login path; bounded batches; single worker thread per node; timeouts; recording failures never break Keycloak actions. |
+| Denial of service against Keycloak | No I/O in transactions or on the login path; bounded batches; single worker thread per node; timeouts; recording failures never break Keycloak actions, and IDs that do not fit the outbox are skipped instead of failing the Keycloak transaction. |
 | Tampered release | Signed artifacts, checksums, SBOM and build provenance (see [releasing](releasing.md)). |
 
 ## Residual risks

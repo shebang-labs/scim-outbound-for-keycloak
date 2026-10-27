@@ -87,10 +87,10 @@ public class OutboxEntity {
     @Column(name = "RESOURCE_TYPE", length = 16, nullable = false)
     private ResourceType resourceType;
 
-    @Column(name = "RESOURCE_ID", length = 36, nullable = false)
+    @Column(name = "RESOURCE_ID", length = 255, nullable = false)
     private String resourceId;
 
-    @Column(name = "RELATED_ID", length = 36)
+    @Column(name = "RELATED_ID", length = 255)
     private String relatedId;
 
     @Enumerated(EnumType.STRING)

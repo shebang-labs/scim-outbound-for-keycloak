@@ -34,6 +34,9 @@ public class ChangeRecorder {
     static final int PRIORITY_NORMAL = 5;
     static final int PRIORITY_BULK = 9;
 
+    /** Longest Keycloak ID the outbox and ID map columns hold. */
+    static final int MAX_ID_LENGTH = 255;
+
     private final KeycloakSession session;
     private final ServerConfig config;
     private final Clock clock;
@@ -89,6 +92,9 @@ public class ChangeRecorder {
 
     /** Queues a row for one specific target, bypassing loop protection (used by reconciliation). */
     public void recordForTarget(ScimTarget target, ResourceType type, String resourceId, Operation op) {
+        if (!storable(resourceId, null, type, op)) {
+            return;
+        }
         long now = clock.millis();
         int priority = op == Operation.DELETE ? PRIORITY_DEPROVISION : PRIORITY_BULK;
         outbox.enqueue(new OutboxRepository.NewRow(target.realmId(), target.id(), type, resourceId, null, op,
@@ -105,6 +111,9 @@ public class ChangeRecorder {
 
     private void record(RealmModel realm, Predicate<ScimTarget> interested, ResourceType type, String resourceId,
             String relatedId, Operation op, int priority) {
+        if (!storable(resourceId, relatedId, type, op)) {
+            return;
+        }
         List<ScimTarget> enabled = targets.listEnabledByRealm(realm.getId());
         if (enabled.isEmpty()) {
             return;
@@ -123,6 +132,24 @@ public class ChangeRecorder {
             outbox.enqueue(new OutboxRepository.NewRow(realm.getId(), target.id(), type, resourceId, relatedId, op,
                     priority), now, retryUntil);
         }
+    }
+
+    /**
+     * An ID longer than its column would fail the insert, and a failed insert rolls back the
+     * transaction of the admin action or login that caused the change. Skip it instead. The ID
+     * is not logged: a federated ID can embed a directory user name.
+     */
+    static boolean storable(String resourceId, String relatedId, ResourceType type, Operation op) {
+        if (fits(resourceId) && (relatedId == null || fits(relatedId))) {
+            return true;
+        }
+        LOG.warnf("scim-outbound: not recording %s %s: Keycloak ID longer than %d characters", op, type,
+                MAX_ID_LENGTH);
+        return false;
+    }
+
+    private static boolean fits(String id) {
+        return id != null && id.length() <= MAX_ID_LENGTH;
     }
 
     /**

@@ -57,10 +57,12 @@
       <column name="RESOURCE_TYPE" type="VARCHAR(16)">
         <constraints nullable="false"/>
       </column>
-      <column name="RESOURCE_ID" type="VARCHAR(36)">
+      <!-- Keycloak IDs are not always UUIDs: users of a federation provider without import are
+           "f:<provider id>:<external id>", far longer than 36 characters. -->
+      <column name="RESOURCE_ID" type="VARCHAR(255)">
         <constraints nullable="false"/>
       </column>
-      <column name="RELATED_ID" type="VARCHAR(36)"/>
+      <column name="RELATED_ID" type="VARCHAR(255)"/>
       <column name="OPERATION" type="VARCHAR(32)">
         <constraints nullable="false"/>
       </column>
@@ -114,7 +116,7 @@
       <column name="RESOURCE_TYPE" type="VARCHAR(16)">
         <constraints nullable="false"/>
       </column>
-      <column name="LOCAL_ID" type="VARCHAR(36)">
+      <column name="LOCAL_ID" type="VARCHAR(255)">
         <constraints nullable="false"/>
       </column>
       <column name="REMOTE_ID" type="VARCHAR(255)">
