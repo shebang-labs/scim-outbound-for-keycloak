@@ -30,8 +30,30 @@ class TargetValidatorTest {
 
     @Test
     void acceptsVaultReferencedBearerToken() {
-        assertThatCode(() -> validator(Map.of()).validate(bearer("${vault.app-a-token}")))
+        assertThatCode(() -> validator(Map.of()).validate(bearer("${vault.scim-app-a-token}")))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void rejectsVaultKeysOutsideThePrefix() {
+        // e.g. the realm's LDAP bind password must not be sendable to a SCIM server
+        assertThatThrownBy(() -> validator(Map.of()).validate(bearer("${vault.ldap-bind-password}")))
+                .isInstanceOf(InvalidConfigurationException.class)
+                .hasMessageContaining("must start with 'scim-'");
+        assertThatCode(() -> validator(Map.of(ServerConfig.VAULT_KEY_PREFIX, "acme-scim-"))
+                .validate(bearer("${vault.acme-scim-a}"))).doesNotThrowAnyException();
+        assertThatCode(() -> validator(Map.of(ServerConfig.VAULT_KEY_PREFIX, "*"))
+                .validate(bearer("${vault.anything}"))).doesNotThrowAnyException();
+    }
+
+    @Test
+    void secretsAreCheckedAgainAtTheMomentOfUse() {
+        ServerConfig server = ServerConfig.defaults();
+        assertThatCode(() -> TargetValidator.requireAllowedVaultKey(server, "${vault.scim-a}"))
+                .doesNotThrowAnyException();
+        assertThatCode(() -> TargetValidator.requireAllowedVaultKey(server, null)).doesNotThrowAnyException();
+        assertThatThrownBy(() -> TargetValidator.requireAllowedVaultKey(server, "${vault.smtp-password}"))
+                .isInstanceOf(InvalidConfigurationException.class);
     }
 
     @Test
@@ -60,7 +82,7 @@ class TargetValidatorTest {
     @Test
     void basicRequiresUsername() {
         TargetConfig config = new TargetConfig("app-c", true, "https://app-c.example.com/scim",
-                new TargetConfig.Auth(AuthType.BASIC, null, null, "${vault.pw}", null, null, null, null),
+                new TargetConfig.Auth(AuthType.BASIC, null, null, "${vault.scim-pw}", null, null, null, null),
                 null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> validator(Map.of()).validate(config)).hasMessageContaining("auth.username");

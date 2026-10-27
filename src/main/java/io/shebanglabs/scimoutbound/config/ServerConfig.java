@@ -29,6 +29,10 @@ import java.util.function.Function;
  * @param claimTimeout            IN_PROGRESS rows older than this are released for another attempt
  * @param retention               DONE and SUPERSEDED rows older than this are deleted
  * @param failedRetention         FAILED rows older than this are deleted
+ * @param vaultKeyPrefix          vault keys targets may reference must start with this, so that a
+ *                                realm admin cannot send other vault secrets of the realm (LDAP
+ *                                bind password, identity provider secrets) to a SCIM server;
+ *                                {@code *} allows any key
  */
 public record ServerConfig(
         List<String> allowedHosts,
@@ -44,7 +48,8 @@ public record ServerConfig(
         Duration maxRetryAge,
         Duration claimTimeout,
         Duration retention,
-        Duration failedRetention) {
+        Duration failedRetention,
+        String vaultKeyPrefix) {
 
     public static final String ALLOWED_HOSTS = "allowed-hosts";
     public static final String ALLOW_HTTP = "allow-http";
@@ -60,6 +65,8 @@ public record ServerConfig(
     public static final String CLAIM_TIMEOUT_SECONDS = "claim-timeout-seconds";
     public static final String RETENTION_DAYS = "retention-days";
     public static final String FAILED_RETENTION_DAYS = "failed-retention-days";
+    public static final String VAULT_KEY_PREFIX = "vault-key-prefix";
+    static final String DEFAULT_VAULT_KEY_PREFIX = "scim-";
 
     public ServerConfig {
         allowedHosts = allowedHosts == null ? List.of() : List.copyOf(allowedHosts);
@@ -95,7 +102,8 @@ public record ServerConfig(
                 Duration.ofHours(number(lookup.apply(MAX_RETRY_HOURS), 24)),
                 Duration.ofSeconds(number(lookup.apply(CLAIM_TIMEOUT_SECONDS), 300)),
                 Duration.ofDays(number(lookup.apply(RETENTION_DAYS), 7)),
-                Duration.ofDays(number(lookup.apply(FAILED_RETENTION_DAYS), 30)));
+                Duration.ofDays(number(lookup.apply(FAILED_RETENTION_DAYS), 30)),
+                text(lookup.apply(VAULT_KEY_PREFIX), DEFAULT_VAULT_KEY_PREFIX));
     }
 
     private static List<String> list(String raw) {
@@ -107,6 +115,15 @@ public record ServerConfig(
                 .filter(s -> !s.isEmpty())
                 .map(s -> s.toLowerCase(Locale.ROOT))
                 .toList();
+    }
+
+    /** Whether a target may reference this vault key. */
+    public boolean vaultKeyAllowed(String key) {
+        return "*".equals(vaultKeyPrefix) || (key != null && key.startsWith(vaultKeyPrefix));
+    }
+
+    private static String text(String raw, String fallback) {
+        return raw == null || raw.isBlank() ? fallback : raw.trim();
     }
 
     private static boolean bool(String raw, boolean fallback) {

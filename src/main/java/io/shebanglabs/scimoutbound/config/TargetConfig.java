@@ -7,6 +7,8 @@ package io.shebanglabs.scimoutbound.config;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -144,12 +146,28 @@ public record TargetConfig(
     /**
      * Copy where secrets sent back as {@link #SECRET_MASK} are replaced by the stored values of
      * {@code previous}, so admins can edit a target without re-entering its secrets.
+     *
+     * <p>A masked secret is only kept while it still goes where it went before: the token or
+     * password to the same {@code baseUrl} host, the client secret to the same {@code tokenUrl}
+     * host. Otherwise an admin who cannot see a secret could send it to a server of their choice
+     * by changing the URL alone, so it has to be entered again.
+     *
+     * @throws InvalidConfigurationException when a masked secret would go to another host
      */
     public TargetConfig keepMaskedSecretsFrom(TargetConfig previous) {
         if (auth == null || previous == null || previous.auth() == null) {
             return this;
         }
         Auth old = previous.auth();
+        boolean sameTarget = sameOrigin(baseUrl, previous.baseUrl());
+        if (!sameTarget && (SECRET_MASK.equals(auth.token()) || SECRET_MASK.equals(auth.password()))) {
+            throw new InvalidConfigurationException("baseUrl points to another host: enter auth.token or"
+                    + " auth.password again instead of the masked value");
+        }
+        if (!sameOrigin(auth.tokenUrl(), old.tokenUrl()) && SECRET_MASK.equals(auth.clientSecret())) {
+            throw new InvalidConfigurationException("auth.tokenUrl points to another host: enter"
+                    + " auth.clientSecret again instead of the masked value");
+        }
         Auth merged = new Auth(auth.type(),
                 SECRET_MASK.equals(auth.token()) ? old.token() : auth.token(),
                 auth.username(),
@@ -158,6 +176,30 @@ public record TargetConfig(
                 SECRET_MASK.equals(auth.clientSecret()) ? old.clientSecret() : auth.clientSecret(),
                 auth.scope());
         return withAuth(merged);
+    }
+
+    /** Same scheme, host and port; unparsable or missing URLs never match. */
+    static boolean sameOrigin(String a, String b) {
+        if (a == null || b == null) {
+            return false;
+        }
+        try {
+            URI x = new URI(a.trim());
+            URI y = new URI(b.trim());
+            return x.getScheme() != null && x.getHost() != null
+                    && x.getScheme().equalsIgnoreCase(y.getScheme())
+                    && x.getHost().equalsIgnoreCase(y.getHost())
+                    && port(x) == port(y);
+        } catch (URISyntaxException e) {
+            return false;
+        }
+    }
+
+    private static int port(URI uri) {
+        if (uri.getPort() != -1) {
+            return uri.getPort();
+        }
+        return "http".equalsIgnoreCase(uri.getScheme()) ? 80 : 443;
     }
 
     private TargetConfig withAuth(Auth newAuth) {

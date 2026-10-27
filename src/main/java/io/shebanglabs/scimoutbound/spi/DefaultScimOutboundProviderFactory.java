@@ -80,12 +80,25 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
         capabilities = new CapabilitiesCache(clock);
         metrics = MicrometerScimMetrics.createIfAvailable();
         LOG.infof("scim-outbound: worker every %ds, batch %d, reconcile every %d min, https-only=%s,"
-                        + " private-addresses=%s, vault-only-secrets=%s, host allowlist=%s",
+                        + " private-addresses=%s, vault-only-secrets=%s, vault key prefix=%s, host allowlist=%s",
                 serverConfig.workerInterval().toSeconds(), serverConfig.batchSize(),
                 serverConfig.reconcileInterval().toMinutes(), !serverConfig.allowHttp(),
                 serverConfig.allowPrivateAddresses(), !serverConfig.allowPlaintextSecrets(),
+                serverConfig.vaultKeyPrefix(),
                 serverConfig.allowedHosts().isEmpty() ? "(any public host)" : serverConfig.allowedHosts());
+        if (serverConfig.allowHttp()) {
+            // TLS is what stops a target whose DNS answer changes after the check (DNS rebinding)
+            // from reaching an internal service: its certificate cannot match the target's name
+            LOG.warn("scim-outbound: allow-http is on: plain-http targets can be intercepted and are not"
+                    + " protected against DNS rebinding; never use it in production");
+        }
+        if (serverConfig.allowedHosts().isEmpty()) {
+            LOG.info("scim-outbound: no allowed-hosts configured: realm admins may point targets at any"
+                    + " public host; set allowed-hosts to the SCIM hosts you use");
+        }
     }
+
+
 
     @Override
     public void postInit(KeycloakSessionFactory factory) {
@@ -214,7 +227,7 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
                             s -> s.getProvider(HttpClientProvider.class).getHttpClient());
                     ScimHttp http = new ScimHttp(httpClient, serverConfig.connectTimeout(),
                             serverConfig.readTimeout(), serverConfig.maxResponseBytes(), clock);
-                    clientFactory = new ClientFactory(hostPolicy, http, tokenCache);
+                    clientFactory = new ClientFactory(hostPolicy, serverConfig, http, tokenCache);
                 }
                 f = clientFactory;
             }
@@ -266,6 +279,8 @@ public class DefaultScimOutboundProviderFactory implements ScimOutboundProviderF
                 .helpText("Allow targets that resolve to loopback, private or link-local addresses.").add()
                 .property().name(ServerConfig.ALLOW_PLAINTEXT_SECRETS).type("boolean").defaultValue(false)
                 .helpText("Accept target secrets that are not ${vault.*} references.").add()
+                .property().name(ServerConfig.VAULT_KEY_PREFIX).type("string").defaultValue("scim-")
+                .helpText("Vault keys targets may reference must start with this; * allows any key.").add()
                 .property().name(ServerConfig.WORKER_INTERVAL_SECONDS).type("int").defaultValue(5)
                 .helpText("How often the outbox worker runs.").add()
                 .property().name(ServerConfig.BATCH_SIZE).type("int").defaultValue(50)

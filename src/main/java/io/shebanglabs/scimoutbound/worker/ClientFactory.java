@@ -13,7 +13,9 @@ import io.shebanglabs.scimoutbound.auth.TokenCache;
 import io.shebanglabs.scimoutbound.config.HostPolicy;
 import io.shebanglabs.scimoutbound.config.InvalidConfigurationException;
 import io.shebanglabs.scimoutbound.config.ScimTarget;
+import io.shebanglabs.scimoutbound.config.ServerConfig;
 import io.shebanglabs.scimoutbound.config.TargetConfig;
+import io.shebanglabs.scimoutbound.config.TargetValidator;
 import io.shebanglabs.scimoutbound.http.ScimClient;
 import io.shebanglabs.scimoutbound.http.ScimHttp;
 import java.net.URI;
@@ -26,11 +28,13 @@ import java.net.URI;
 public class ClientFactory {
 
     private final HostPolicy hostPolicy;
+    private final ServerConfig serverConfig;
     private final ScimHttp http;
     private final TokenCache tokenCache;
 
-    public ClientFactory(HostPolicy hostPolicy, ScimHttp http, TokenCache tokenCache) {
+    public ClientFactory(HostPolicy hostPolicy, ServerConfig serverConfig, ScimHttp http, TokenCache tokenCache) {
         this.hostPolicy = hostPolicy;
+        this.serverConfig = serverConfig;
         this.http = http;
         this.tokenCache = tokenCache;
     }
@@ -48,6 +52,9 @@ public class ClientFactory {
         TargetConfig.Auth auth = target.config().auth();
         if (auth == null || auth.type() == null) {
             throw new InvalidConfigurationException("target has no authentication configured");
+        }
+        for (String secret : new String[] {auth.token(), auth.password(), auth.clientSecret()}) {
+            TargetValidator.requireAllowedVaultKey(serverConfig, secret);
         }
         return switch (auth.type()) {
             case BEARER -> new BearerAuthenticator(secrets.resolve(auth.token()).orElse(null));

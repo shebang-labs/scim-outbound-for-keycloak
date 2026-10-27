@@ -20,10 +20,11 @@ The plugin opens no port and accepts no webhooks.
 | Threat | Mitigation |
 |--------|------------|
 | Credential theft from the database or a realm export | Vault references instead of secrets; secrets masked in API responses and admin events; least-privilege tokens; tokens kept in memory only. |
-| SSRF through a malicious target URL | Operator host allowlist; HTTPS only; private, loopback, link-local, CGNAT and unique-local addresses blocked; URLs re-checked before every use; redirects never followed; credentials/query/fragment in URLs rejected. |
+| Secret redirection by a realm admin | A masked secret is only kept while its URL keeps its host; moving `baseUrl` or `auth.tokenUrl` to another host requires entering the secret again. Targets can only reference vault keys with the operator's `vault-key-prefix` (default `scim-`), so the realm's other vault secrets (LDAP bind password, identity provider secrets) cannot be sent to a SCIM server. |
+| SSRF through a malicious target URL | Operator host allowlist; HTTPS only; private, loopback, link-local, CGNAT and unique-local addresses blocked; URLs re-checked before every use; redirects never followed; credentials/query/fragment in URLs rejected. A host whose DNS answer changes between the check and the connection (DNS rebinding) still fails the TLS handshake, because an internal service cannot present a certificate for the target's name. |
 | Man-in-the-middle | TLS with certificate and hostname verification through Keycloak's truststore; no option to disable it. |
 | Malicious or huge responses | 5 MB cap (configurable), bounded reads also for chunked bodies, strict parser limits. |
-| Personal data in logs | Logs contain ids, methods, paths without queries and status codes only; bodies are never logged. |
+| Personal data in logs | Logs contain ids, methods, paths without queries and status codes only; bodies and application error texts are never logged (permanent failures point to the admin API instead). |
 | Personal data in the database | The outbox stores ids only; stored error text is truncated and stripped of control characters, and non-SCIM error bodies are never stored. |
 | Cross-realm leakage | Every row, mapping and target carries its realm; the admin API filters by realm; the worker loads data from the row's realm only; covered by integration tests. |
 | Mass deactivation by misconfiguration | Deactivate (not delete) by default; reconciliation safety brake; first reconciliation is a dry run; a scope that resolves to no groups fails instead of excluding everybody. |
@@ -32,6 +33,12 @@ The plugin opens no port and accepts no webhooks.
 | Tampered release | Signed artifacts, checksums, SBOM and build provenance (see [releasing](releasing.md)). |
 
 ## Residual risks
+
+- **DNS rebinding without TLS.** The address check happens just before each use, not inside the
+  connection, so a host can change its DNS answer in between. With HTTPS (the default) the TLS
+  handshake stops this. With `allow-http` (testing only, and logged as a warning at startup) or an
+  HTTP client whose trust manager is disabled in Keycloak's own settings, it does not: set
+  `allowed-hosts` so that only hosts you trust can be targets.
 
 - **Runs inside the IdP.** A bug in the plugin is a bug in Keycloak. Keep the codebase small,
   reviewed, scanned (CodeQL) and with few dependencies (it bundles none).

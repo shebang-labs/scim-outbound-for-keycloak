@@ -24,6 +24,7 @@ KC_SPI_SCIM_OUTBOUND__DEFAULT__ALLOWED_HOSTS='*.example.com'
 | `allow-http` | `false` | Allow `http://` URLs. For local testing only. |
 | `allow-private-addresses` | `false` | Allow non-allowlisted hosts that resolve to loopback, private, link-local (including cloud metadata), CGNAT or unique-local addresses. |
 | `allow-plaintext-secrets` | `false` | Accept secrets that are not `${vault.*}` references. |
+| `vault-key-prefix` | `scim-` | Vault keys a target may reference must start with this, so a realm admin cannot send the realm's other vault secrets (LDAP bind password, identity provider secrets) to a SCIM server. `*` allows any key. |
 | `worker-interval-seconds` | `5` | How often the outbox worker runs. |
 | `batch-size` | `50` | Maximum rows claimed per worker round. |
 | `reconcile-interval-minutes` | `1440` | Scheduled reconciliation interval; `0` disables it. |
@@ -54,7 +55,7 @@ creation and updates need the listener.
     "type": "OAUTH2_CLIENT_CREDENTIALS",
     "tokenUrl": "https://app-a.example.com/oauth/token",
     "clientId": "keycloak-provisioner",
-    "clientSecret": "${vault.app-a-client-secret}",
+    "clientSecret": "${vault.scim-app-a-client-secret}",
     "scope": "scim.write"
   },
   "deprovision": "DEACTIVATE",
@@ -118,8 +119,11 @@ switch it off afterwards.
 
 Configure a [Keycloak vault](https://www.keycloak.org/server/vault) and reference secrets as
 `${vault.<key>}`. They are resolved at the moment of use and never returned by the API (the
-API shows `**********`; sending that value back on update keeps the stored secret). Plain-text
-secrets are rejected unless the operator sets `allow-plaintext-secrets=true`.
+API shows `**********`; sending that value back on update keeps the stored secret, as long as
+the URL it is sent to keeps its host: when `baseUrl` or `auth.tokenUrl` moves to another host, the
+secret has to be entered again, so nobody can redirect a secret they cannot see). Plain-text
+secrets are rejected unless the operator sets `allow-plaintext-secrets=true`. Keys must start with
+the `vault-key-prefix` (default `scim-`).
 
-With the files vault, `${vault.app-a-token}` in realm `acme` is read from the file
-`acme_app-a-token` in the vault directory.
+With the files vault, `${vault.scim-app-a-token}` in realm `acme` is read from the file
+`acme_scim-app-a-token` in the vault directory.

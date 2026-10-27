@@ -13,7 +13,7 @@ All bodies are JSON. Errors look like `{"error": "message"}`.
 | `GET /targets` | view-realm | List targets (secrets masked). |
 | `POST /targets` | manage-realm | Create a target. `201` with the target, `400` on validation errors, `409` if the name exists. |
 | `GET /targets/{id}` | view-realm | One target. |
-| `PUT /targets/{id}` | manage-realm | Replace the configuration. Masked secrets (`**********`) keep their stored value. |
+| `PUT /targets/{id}` | manage-realm | Replace the configuration. Masked secrets (`**********`) keep their stored value, unless `baseUrl` (token, password) or `auth.tokenUrl` (client secret) moves to another host: then the secret must be sent again (`400` otherwise). |
 | `DELETE /targets/{id}` | manage-realm | Delete the target with its outbox rows and ID map. Remote accounts are not touched. |
 
 A target as returned by the API:
@@ -79,7 +79,7 @@ API="$KC/admin/realms/acme/scim-outbound"
 
 ID=$(curl -s -X POST "$API/targets" -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
   -d '{"name":"app-a","baseUrl":"https://app-a.example.com/scim/v2",
-       "auth":{"type":"BEARER","token":"${vault.app-a-token}"}}' | jq -r .id)
+       "auth":{"type":"BEARER","token":"${vault.scim-app-a-token}"}}' | jq -r .id)
 curl -s -X POST "$API/targets/$ID/test" -H "Authorization: Bearer $TOKEN"
 curl -s -X POST "$API/targets/$ID/reconcile?dryRun=true" -H "Authorization: Bearer $TOKEN"
 curl -s "$API/targets/$ID/status" -H "Authorization: Bearer $TOKEN" | jq

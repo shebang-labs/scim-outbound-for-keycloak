@@ -5,6 +5,7 @@
 package io.shebanglabs.scimoutbound.config;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import io.shebanglabs.scimoutbound.scim.ScimJson;
 import java.io.IOException;
@@ -42,6 +43,39 @@ class TargetConfigTest {
         TargetConfig edited = OAUTH.masked();
 
         assertThat(edited.keepMaskedSecretsFrom(OAUTH).auth().clientSecret()).isEqualTo("${vault.secret}");
+    }
+
+    @Test
+    void maskedSecretIsNotSentToANewHost() {
+        // otherwise an admin could redirect a secret they cannot see by editing the URL only
+        TargetConfig.Auth a = OAUTH.masked().auth();
+        TargetConfig movedBase = new TargetConfig("app", null, "https://evil.example.net/scim",
+                new TargetConfig.Auth(AuthType.BEARER, TargetConfig.SECRET_MASK, null, null, null, null, null, null),
+                null, null, null, null, null, null, null);
+        TargetConfig movedTokenUrl = new TargetConfig("app", null, OAUTH.baseUrl(),
+                new TargetConfig.Auth(a.type(), null, null, null, "https://evil.example.net/token", a.clientId(),
+                        a.clientSecret(), null),
+                null, null, null, null, null, null, null);
+        TargetConfig bearer = new TargetConfig("app", null, OAUTH.baseUrl(),
+                new TargetConfig.Auth(AuthType.BEARER, "${vault.scim-old}", null, null, null, null, null, null),
+                null, null, null, null, null, null, null);
+
+        assertThatThrownBy(() -> movedBase.keepMaskedSecretsFrom(bearer))
+                .isInstanceOf(InvalidConfigurationException.class).hasMessageContaining("auth.token");
+        assertThatThrownBy(() -> movedTokenUrl.keepMaskedSecretsFrom(OAUTH))
+                .isInstanceOf(InvalidConfigurationException.class).hasMessageContaining("auth.clientSecret");
+    }
+
+    @Test
+    void maskedSecretIsKeptWhenOnlyThePathChanges() {
+        TargetConfig bearer = new TargetConfig("app", null, "https://a.example.com/scim",
+                new TargetConfig.Auth(AuthType.BEARER, "${vault.scim-old}", null, null, null, null, null, null),
+                null, null, null, null, null, null, null);
+        TargetConfig edited = new TargetConfig("app", null, "https://A.example.com:443/scim/v2",
+                new TargetConfig.Auth(AuthType.BEARER, TargetConfig.SECRET_MASK, null, null, null, null, null, null),
+                null, null, null, null, null, null, null);
+
+        assertThat(edited.keepMaskedSecretsFrom(bearer).auth().token()).isEqualTo("${vault.scim-old}");
     }
 
     @Test

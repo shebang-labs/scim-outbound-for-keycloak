@@ -19,7 +19,7 @@ are switched off everywhere when someone leaves.
 - **Groups and membership** (optional per target), including group rename and delete.
 - **Several targets per realm**, each with its own credentials, scope and attribute mapping.
 - **Authentication**: static bearer token, OAuth 2.0 client credentials, HTTP Basic. Secrets are
-  stored as Keycloak vault references (`${vault.my-key}`).
+  stored as Keycloak vault references (`${vault.scim-my-key}`).
 - **Reliable delivery**: a transactional outbox in Keycloak's database. Changes are recorded in
   the same transaction as the Keycloak change and sent afterwards by a background worker with
   retries, backoff and `Retry-After` support. **A slow or broken application never slows down
@@ -73,7 +73,7 @@ curl -X POST "https://keycloak.example.com/admin/realms/acme/scim-outbound/targe
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d '{
     "name": "app-a",
     "baseUrl": "https://app-a.example.com/scim/v2",
-    "auth": { "type": "BEARER", "token": "${vault.app-a-token}" },
+    "auth": { "type": "BEARER", "token": "${vault.scim-app-a-token}" },
     "syncGroups": true
   }'
 ```

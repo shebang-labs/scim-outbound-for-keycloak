@@ -25,6 +25,9 @@ All notable changes to this project are documented here. The format follows
 - Admin REST API: target CRUD, test connection, status, failed rows with retry, reconciliation.
 - SSRF protection (https only, host allowlist, private address blocking), response size limits,
   no redirects.
+- Secret protection against realm admins: targets only reference vault keys with the
+  `vault-key-prefix` (default `scim-`), and a masked secret is not kept when its URL moves to
+  another host.
 - Micrometer metrics.
 - Docker-compose demo, documentation, CI, CodeQL, SBOM and release pipeline.
 

@@ -257,8 +257,10 @@ public class OutboxWorker {
             }
         });
         if (status == OutboxStatus.FAILED) {
-            LOG.warnf("scim-outbound: %s %s for target %s failed permanently: %s", row.operation(),
-                    row.resourceType(), row.targetId(), message);
+            // the reason can quote personal data from the application, so it stays in the database
+            LOG.warnf("scim-outbound: %s %s for target %s failed permanently (row %s); the reason is in"
+                    + " GET .../scim-outbound/targets/%s/failed", row.operation(), row.resourceType(), row.targetId(),
+                    row.id(), row.targetId());
         }
         metrics.rowProcessed(row.targetId(), row.operation().name(), status.name().toLowerCase(java.util.Locale.ROOT),
                 clock.millis() - started);

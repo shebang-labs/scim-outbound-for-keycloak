@@ -7,6 +7,7 @@ package io.shebanglabs.scimoutbound.config;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -16,18 +17,43 @@ import java.util.regex.Pattern;
 public class TargetValidator {
 
     private static final Pattern NAME = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_.-]{0,63}");
-    private static final Pattern VAULT_REF = Pattern.compile("^\\$\\{vault\\.[^}]+}$");
+    private static final Pattern VAULT_REF = Pattern.compile("^\\$\\{vault\\.([^}]+)}$");
 
     private final HostPolicy hostPolicy;
+    private final ServerConfig serverConfig;
     private final boolean allowPlaintextSecrets;
 
     public TargetValidator(HostPolicy hostPolicy, ServerConfig serverConfig) {
         this.hostPolicy = hostPolicy;
+        this.serverConfig = serverConfig;
         this.allowPlaintextSecrets = serverConfig.allowPlaintextSecrets();
     }
 
     public static boolean isVaultReference(String value) {
         return value != null && VAULT_REF.matcher(value).matches();
+    }
+
+    /** The key of a {@code ${vault.key}} reference, or {@code null} for anything else. */
+    public static String vaultKey(String value) {
+        if (value == null) {
+            return null;
+        }
+        Matcher m = VAULT_REF.matcher(value);
+        return m.matches() ? m.group(1) : null;
+    }
+
+    /**
+     * Checks a secret against the operator's vault key prefix at the moment of use, for targets
+     * stored before the prefix was tightened.
+     *
+     * @throws InvalidConfigurationException when the vault key is not allowed
+     */
+    public static void requireAllowedVaultKey(ServerConfig serverConfig, String value) {
+        String key = vaultKey(value);
+        if (key != null && !serverConfig.vaultKeyAllowed(key)) {
+            throw new InvalidConfigurationException("vault key is not allowed: it must start with '"
+                    + serverConfig.vaultKeyPrefix() + "' (server option " + ServerConfig.VAULT_KEY_PREFIX + ")");
+        }
     }
 
     /**
@@ -97,8 +123,11 @@ public class TargetValidator {
         if (blank(value)) {
             errors.add(field + " is required");
         } else if (!allowPlaintextSecrets && !isVaultReference(value)) {
-            errors.add(field + " must be a vault reference such as ${vault.my-key}"
+            errors.add(field + " must be a vault reference such as ${vault." + example() + "}"
                     + " (plain-text secrets are disabled on this server)");
+        } else if (isVaultReference(value) && !serverConfig.vaultKeyAllowed(vaultKey(value))) {
+            errors.add(field + ": vault key must start with '" + serverConfig.vaultKeyPrefix() + "', such as ${vault."
+                    + example() + "}; other vault secrets of the realm cannot be sent to a SCIM server");
         }
     }
 
@@ -108,6 +137,10 @@ public class TargetValidator {
         } catch (InvalidConfigurationException e) {
             errors.add(field + ": " + e.getMessage());
         }
+    }
+
+    private String example() {
+        return "*".equals(serverConfig.vaultKeyPrefix()) ? "my-key" : serverConfig.vaultKeyPrefix() + "my-key";
     }
 
     private static boolean blank(String s) {

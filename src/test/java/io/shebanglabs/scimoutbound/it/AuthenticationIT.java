@@ -38,7 +38,7 @@ class AuthenticationIT {
         // the files vault resolves ${vault.<key>} in realm <realm> from the file <realm>_<key>
         env.keycloak()
                 .withCopyToContainer(Transferable.of("token-from-vault"), "/opt/keycloak/vault/auth_scim-token")
-                .withCopyToContainer(Transferable.of("oauth-secret"), "/opt/keycloak/vault/auth_oauth-secret");
+                .withCopyToContainer(Transferable.of("oauth-secret"), "/opt/keycloak/vault/auth_scim-oauth-secret");
         env.start();
         env.createRealm(REALM);
     }
@@ -95,7 +95,7 @@ class AuthenticationIT {
     void oauthClientCredentialsTokenIsFetchedAndUsed() {
         createTarget("oauth", "/oauth/scim/v2", "{\"type\":\"OAUTH2_CLIENT_CREDENTIALS\","
                 + "\"tokenUrl\":\"http://scim:8080/oauth/token\",\"clientId\":\"keycloak\","
-                + "\"clientSecret\":\"${vault.oauth-secret}\",\"scope\":\"scim.write\"}");
+                + "\"clientSecret\":\"${vault.scim-oauth-secret}\",\"scope\":\"scim.write\"}");
         try {
             createUser("judy");
 
