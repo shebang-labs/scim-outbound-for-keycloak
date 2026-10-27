@@ -69,7 +69,7 @@
     <keycloak.image>quay.io/keycloak/keycloak:${keycloak.version}</keycloak.image>
 
     <!-- Version shipped in the Keycloak 26.8 distribution (provided at runtime). -->
-    <micrometer.version>1.17.1</micrometer.version>
+    <micrometer.version>1.17.2</micrometer.version>
 
     <!-- Test dependencies -->
     <junit.version>6.1.3</junit.version>
