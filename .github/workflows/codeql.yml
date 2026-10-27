@@ -18,6 +18,7 @@ jobs:
     permissions:
       security-events: write
       contents: read
+      actions: read   # the analyze step reads the workflow run; private repositories deny it otherwise
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
