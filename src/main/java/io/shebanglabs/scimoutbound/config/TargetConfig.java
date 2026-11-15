@@ -7,8 +7,12 @@ package io.shebanglabs.scimoutbound.config;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import io.shebanglabs.scimoutbound.scim.ScimJson;
+import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -32,7 +36,8 @@ public record TargetConfig(
         Map<String, String> customAttributes,
         Safety safety,
         LoopProtection loopProtection,
-        Boolean linkExistingAccounts) {
+        Boolean linkExistingAccounts,
+        UserUpdateMode userUpdateMode) {
 
     /** Value returned in place of every secret. Sending it back on update keeps the stored secret. */
     public static final String SECRET_MASK = "**********";
@@ -91,6 +96,30 @@ public record TargetConfig(
     public record LoopProtection(List<String> ignoredClientIds) {
     }
 
+    /**
+     * Parses a configuration sent to the admin API. A value outside an enumeration (such as
+     * {@code userUpdateMode}) is reported with the field and the allowed values, but never with
+     * the value itself, which could be a secret pasted into the wrong field.
+     *
+     * @throws InvalidConfigurationException when the body is not a valid configuration
+     */
+    public static TargetConfig fromJson(String body) {
+        try {
+            return ScimJson.read(body, TargetConfig.class);
+        } catch (InvalidFormatException e) {
+            Class<?> type = e.getTargetType();
+            if (type != null && type.isEnum() && !e.getPath().isEmpty()) {
+                String field = e.getPath().stream().map(r -> r.getFieldName()).filter(n -> n != null)
+                        .reduce((x, y) -> x + "." + y).orElse("?");
+                throw new InvalidConfigurationException(field + " must be one of "
+                        + Arrays.toString(type.getEnumConstants()));
+            }
+            throw new InvalidConfigurationException("request body is not a valid target configuration");
+        } catch (IOException e) {
+            throw new InvalidConfigurationException("request body is not a valid target configuration");
+        }
+    }
+
     public boolean enabledOrDefault() {
         return enabled == null || enabled;
     }
@@ -103,6 +132,14 @@ public record TargetConfig(
      */
     public boolean linkExistingAccountsOrDefault() {
         return linkExistingAccounts != null && linkExistingAccounts;
+    }
+
+    /**
+     * How users are updated and deactivated. {@link UserUpdateMode#AUTO} unless set; servers that
+     * advertise PATCH but reject the path form on users need {@link UserUpdateMode#PUT}.
+     */
+    public UserUpdateMode userUpdateModeOrDefault() {
+        return userUpdateMode == null ? UserUpdateMode.AUTO : userUpdateMode;
     }
 
     public boolean syncGroupsOrDefault() {
@@ -204,6 +241,6 @@ public record TargetConfig(
 
     private TargetConfig withAuth(Auth newAuth) {
         return new TargetConfig(name, enabled, baseUrl, newAuth, deprovision, syncGroups, scope,
-                customAttributes, safety, loopProtection, linkExistingAccounts);
+                customAttributes, safety, loopProtection, linkExistingAccounts, userUpdateMode);
     }
 }

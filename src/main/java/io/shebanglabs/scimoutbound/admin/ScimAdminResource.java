@@ -330,11 +330,7 @@ public class ScimAdminResource {
         if (body == null || body.isBlank()) {
             throw new InvalidConfigurationException("request body is required");
         }
-        try {
-            return ScimJson.read(body, TargetConfig.class);
-        } catch (IOException e) {
-            throw new InvalidConfigurationException("request body is not a valid target configuration");
-        }
+        return TargetConfig.fromJson(body);
     }
 
     private long now() {

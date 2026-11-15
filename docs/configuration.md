@@ -88,6 +88,7 @@ creation and updates need the listener.
 | `safety.firstReconcileDryRun` | `true` | Scheduled reconciliation only reports until an admin has completed one real run. |
 | `loopProtection.ignoredClientIds` | *(none)* | Changes made through these OAuth clients (bearer token `azp`) are not sent to this target. |
 | `linkExistingAccounts` | `false` | See [Existing accounts on the target](#existing-accounts-on-the-target). |
+| `userUpdateMode` | `AUTO` | How existing users are updated and deactivated: `AUTO`, `PATCH` or `PUT`. See [How users are updated](#how-users-are-updated). |
 
 ### Existing accounts on the target
 
@@ -101,6 +102,37 @@ a test user named like a real one would take the real account down with it. Rena
 the remote account, or, when the target already holds the same people (for example when it was
 provisioned by hand before), set `"linkExistingAccounts": true` for the first reconciliation and
 switch it off afterwards.
+
+### How users are updated
+
+`userUpdateMode` decides how the plugin changes a user that already exists on the target, both
+for updates and for deactivation (`deprovision: DEACTIVATE`). Creating, deleting and groups are not
+affected.
+
+| Mode | Behaviour |
+|------|-----------|
+| `AUTO` (default) | `PATCH` with `replace` operations when `/ServiceProviderConfig` reports PATCH support, otherwise `PUT`. If a user `PATCH` is answered with `400`, it is retried once as a merged `PUT` (below) and a warning naming the target is logged (once per target and Keycloak node). Other errors (`401`, `403`, `404`, `409`, ...) are never retried this way. |
+| `PATCH` | Always `PATCH`, never `PUT`, whatever `/ServiceProviderConfig` says. |
+| `PUT` | Always a merged `PUT`: the plugin reads the user (`GET /Users/{id}`), sets the mapped attributes (`userName`, `externalId`, `name`, `displayName`, `emails`, `active`, custom attributes and the enterprise extension) and sends the whole user back. Attributes the plugin does not map, and ones it does not know, are sent back unchanged; the read-only `meta` and `groups` are left out. Deactivation changes `active` only. |
+
+Use `PUT` for servers that advertise PATCH but reject the RFC 7644 `path` form of it on users,
+such as the **1Password SCIM Bridge** (it answers `400` with "operation did not fit expected field
+operation structure"). `AUTO` also works there, but sends a PATCH that fails before every update.
+
+```json
+{
+  "name": "1password",
+  "baseUrl": "https://scim.example.com/scim/v2",
+  "auth": { "type": "BEARER", "token": "${vault.scim-1password-token}" },
+  "deprovision": "DEACTIVATE",
+  "syncGroups": true,
+  "linkExistingAccounts": true,
+  "userUpdateMode": "PUT"
+}
+```
+
+A merged `PUT` costs one extra `GET` per update. Between the read and the write, a change made
+on the target itself can be overwritten.
 
 ### Default attribute mapping
 

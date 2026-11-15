@@ -14,6 +14,19 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Users could not be updated or deactivated on the 1Password SCIM Bridge. It reports PATCH
+  support but rejects the RFC 7644 `path` form of PATCH on users with `400`. A new per-target
+  option `userUpdateMode` (`AUTO`, `PATCH` or `PUT`) chooses how users are updated and
+  deactivated. `PUT` reads the user, merges in the mapped attributes and sends the whole user
+  back, keeping attributes the plugin does not map. The default `AUTO` keeps the previous
+  behaviour, and now retries a user PATCH answered with `400` once as such a PUT, logging a
+  warning that names the target. Set `"userUpdateMode": "PUT"` for the 1Password SCIM Bridge.
+- An existing account found on the target (by `userName`, or after a `409`) was linked even when
+  updating it then failed, so Keycloak treated the account as provisioned and later deprovisioning
+  acted on it. The link is now saved only after the update succeeded. Links left behind by 0.1.0
+  are repaired by the next successful update: set `userUpdateMode` and retry the failed rows.
+- Invalid values for enumerated target settings (such as `userUpdateMode` or `deprovision`) are
+  rejected with the field name and the allowed values instead of a generic error.
 - Release builds are reproducible byte for byte: the release workflow no longer lets
   `versions:set` write the build time into the `pom.xml` embedded in the jar. In 0.1.0 that file
   differs from a rebuild; every class file is identical.

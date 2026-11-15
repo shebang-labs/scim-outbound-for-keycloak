@@ -70,11 +70,11 @@ class SyncExecutorTest {
     }
 
     private static TargetConfig config(DeprovisionMode mode, boolean groups) {
-        return new TargetConfig("t", true, "https://x", null, mode, groups, null, null, null, null, null);
+        return new TargetConfig("t", true, "https://x", null, mode, groups, null, null, null, null, null, null);
     }
 
     private static TargetConfig linkingExisting(boolean groups) {
-        return new TargetConfig("t", true, "https://x", null, null, groups, null, null, null, null, true);
+        return new TargetConfig("t", true, "https://x", null, null, groups, null, null, null, null, true, null);
     }
 
     private static UserState alice(String remoteId, boolean inScope, List<String> groups) {

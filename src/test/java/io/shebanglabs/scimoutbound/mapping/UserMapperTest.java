@@ -9,13 +9,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.shebanglabs.scimoutbound.config.TargetConfig;
+import io.shebanglabs.scimoutbound.scim.ScimEnterpriseUser;
 import io.shebanglabs.scimoutbound.scim.ScimEmail;
 import io.shebanglabs.scimoutbound.scim.ScimJson;
 import io.shebanglabs.scimoutbound.scim.ScimName;
 import io.shebanglabs.scimoutbound.scim.ScimPatchOp;
 import io.shebanglabs.scimoutbound.scim.ScimSchemas;
 import io.shebanglabs.scimoutbound.scim.ScimUser;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -25,7 +28,7 @@ import org.mockito.Mockito;
 class UserMapperTest {
 
     private static TargetConfig config(Map<String, String> custom) {
-        return new TargetConfig("t", null, "https://x", null, null, null, null, custom, null, null, null);
+        return new TargetConfig("t", null, "https://x", null, null, null, null, custom, null, null, null, null);
     }
 
     private static UserModel alice() {
@@ -140,5 +143,67 @@ class UserMapperTest {
         assertThat(UserMapper.comparableDifferences(desired, same)).isEmpty();
         assertThat(UserMapper.comparableDifferences(desired, drifted))
                 .containsExactly("userName", "active", "emails", "displayName", "name");
+    }
+
+    // ---- merge for PUT -----------------------------------------------------------------------
+
+    private static ObjectNode remote(String json) throws IOException {
+        return (ObjectNode) ScimJson.mapper().readTree(json);
+    }
+
+    @Test
+    void mergeForPutKeepsUnknownAttributesAndDropsReadOnlyOnes() throws IOException {
+        ObjectNode merged = new UserMapper(config(null)).mergeForPut(remote(
+                "{\"id\":\"r-1\",\"userName\":\"old\",\"x509Certificates\":[{\"value\":\"MII\"}],"
+                        + "\"meta\":{\"version\":\"W/1\"},\"groups\":[{\"value\":\"g\"}]}"),
+                "r-1", new ScimUser(null, null, "kc-1", "alice", null, "Alice", null, null, null, null, true, null));
+
+        assertThat(merged.get("userName").asText()).isEqualTo("alice");
+        assertThat(merged.get("externalId").asText()).isEqualTo("kc-1");
+        assertThat(merged.get("active").asBoolean()).isTrue();
+        assertThat(merged.get("x509Certificates").get(0).get("value").asText()).isEqualTo("MII");
+        assertThat(merged.has("meta")).isFalse();
+        assertThat(merged.has("groups")).isFalse();
+        assertThat(merged.get("schemas").get(0).asText()).isEqualTo(ScimSchemas.USER);
+    }
+
+    @Test
+    void mergeForPutMergesNameAndEnterpriseSubAttributes() throws IOException {
+        ObjectNode merged = new UserMapper(config(Map.of("enterprise.department", "dept"))).mergeForPut(remote(
+                "{\"schemas\":[\"" + ScimSchemas.USER + "\"],\"name\":{\"givenName\":\"Old\",\"middleName\":\"Q\"},"
+                        + "\"" + ScimSchemas.ENTERPRISE_USER + "\":{\"manager\":{\"value\":\"m-1\"}}}"),
+                "r-1", new ScimUser(null, null, "kc-1", "alice", ScimName.of("Alice", "Ng"), "Alice Ng", null, null,
+                        null, List.of(ScimEmail.work("a@acme.test")), true,
+                        new ScimEnterpriseUser(null, null, null, null, "R&D")));
+
+        assertThat(merged.get("name").get("givenName").asText()).isEqualTo("Alice");
+        assertThat(merged.get("name").get("familyName").asText()).isEqualTo("Ng");
+        assertThat(merged.get("name").get("middleName").asText()).isEqualTo("Q");
+        assertThat(merged.get("emails").get(0).get("value").asText()).isEqualTo("a@acme.test");
+        assertThat(merged.get(ScimSchemas.ENTERPRISE_USER).get("department").asText()).isEqualTo("R&D");
+        assertThat(merged.get(ScimSchemas.ENTERPRISE_USER).get("manager").get("value").asText()).isEqualTo("m-1");
+        assertThat(merged.get("schemas")).extracting(n -> n.asText())
+                .containsExactly(ScimSchemas.USER, ScimSchemas.ENTERPRISE_USER);
+    }
+
+    @Test
+    void mergeForPutClearsOnlyOwnedAttributesThatBecameEmpty() throws IOException {
+        ObjectNode merged = new UserMapper(config(Map.of("title", "jobTitle"))).mergeForPut(remote(
+                "{\"displayName\":\"Old\",\"title\":\"Old title\",\"locale\":\"de-DE\"}"),
+                "r-1", new ScimUser(null, null, "kc-1", "alice", null, null, null, null, null, null, false, null));
+
+        assertThat(merged.has("displayName")).isFalse();
+        assertThat(merged.has("title")).isFalse();
+        assertThat(merged.get("locale").asText()).isEqualTo("de-DE"); // not mapped: the app's own value
+        assertThat(merged.get("active").asBoolean()).isFalse();
+    }
+
+    @Test
+    void withActiveChangesNothingElse() throws IOException {
+        ObjectNode merged = UserMapper.withActive(remote(
+                "{\"id\":\"r-1\",\"userName\":\"alice\",\"active\":true,\"meta\":{}}"), "r-1", false);
+
+        assertThat(ScimJson.write(merged)).isEqualTo(
+                "{\"id\":\"r-1\",\"userName\":\"alice\",\"active\":false,\"schemas\":[\"" + ScimSchemas.USER + "\"]}");
     }
 }

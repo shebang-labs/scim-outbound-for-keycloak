@@ -4,9 +4,13 @@
  */
 package io.shebanglabs.scimoutbound.mapping;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.shebanglabs.scimoutbound.config.TargetConfig;
 import io.shebanglabs.scimoutbound.scim.ScimEmail;
 import io.shebanglabs.scimoutbound.scim.ScimEnterpriseUser;
+import io.shebanglabs.scimoutbound.scim.ScimJson;
 import io.shebanglabs.scimoutbound.scim.ScimName;
 import io.shebanglabs.scimoutbound.scim.ScimPatchOp;
 import io.shebanglabs.scimoutbound.scim.ScimSchemas;
@@ -93,6 +97,81 @@ public class UserMapper {
             patch.replace(ScimSchemas.ENTERPRISE_USER, desired.enterprise());
         }
         return patch.build();
+    }
+
+    /**
+     * Merges the mapped attributes into a user as read from the target, for a full PUT. It has the
+     * same effect as {@link #toReplacePatch}: attributes we map are set (complex ones sub-attribute
+     * by sub-attribute), attributes we own and no longer have are removed, and everything else the
+     * target keeps on the user, including attributes this plugin does not model, is sent back
+     * unchanged. Read-only attributes ({@code meta}, {@code groups}) are dropped.
+     *
+     * @param remote the user as returned by {@code GET /Users/{id}}; changed in place
+     * @param remoteId the user's id on the target
+     * @return {@code remote}
+     */
+    public ObjectNode mergeForPut(ObjectNode remote, String remoteId, ScimUser desired) {
+        remote.remove("meta");
+        remote.remove("groups");
+        remote.put("id", remoteId);
+        ensureSchema(remote, ScimSchemas.USER);
+        remote.put("userName", desired.userName());
+        remote.put("externalId", desired.externalId());
+        remote.put("active", desired.active());
+        putOrRemove(remote, "displayName", desired.displayName());
+        if (desired.name() != null) {
+            mergeObject(remote, "name", desired.name());
+        }
+        if (desired.emails() != null) {
+            remote.set("emails", ScimJson.mapper().valueToTree(desired.emails()));
+        }
+        putOrRemove(remote, "title", desired.title());
+        putOrRemove(remote, "preferredLanguage", desired.preferredLanguage());
+        putOrRemove(remote, "locale", desired.locale());
+        if (desired.enterprise() != null) {
+            ensureSchema(remote, ScimSchemas.ENTERPRISE_USER);
+            mergeObject(remote, ScimSchemas.ENTERPRISE_USER, desired.enterprise());
+        }
+        return remote;
+    }
+
+    /** Sets {@code active} on a user as read from the target, for a full PUT; nothing else changes. */
+    public static ObjectNode withActive(ObjectNode remote, String remoteId, boolean active) {
+        remote.remove("meta");
+        remote.remove("groups");
+        remote.put("id", remoteId);
+        ensureSchema(remote, ScimSchemas.USER);
+        remote.put("active", active);
+        return remote;
+    }
+
+    private void putOrRemove(ObjectNode node, String attribute, String value) {
+        if (value != null) {
+            node.put(attribute, value);
+        } else if (custom.containsKey(attribute) || attribute.equals("displayName")) {
+            node.remove(attribute); // only clear attributes we own, never ones the app manages itself
+        }
+    }
+
+    private static void mergeObject(ObjectNode node, String attribute, Object value) {
+        ObjectNode desired = ScimJson.mapper().valueToTree(value);
+        JsonNode current = node.get(attribute);
+        if (current instanceof ObjectNode existing) {
+            existing.setAll(desired);
+        } else {
+            node.set(attribute, desired);
+        }
+    }
+
+    private static void ensureSchema(ObjectNode node, String schema) {
+        JsonNode schemas = node.get("schemas");
+        ArrayNode list = schemas instanceof ArrayNode array ? array : node.putArray("schemas");
+        for (JsonNode s : list) {
+            if (schema.equals(s.asText())) {
+                return;
+            }
+        }
+        list.add(schema);
     }
 
     private void replaceOrRemove(ScimPatchOp.Builder patch, String path, String value) {
