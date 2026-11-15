@@ -55,7 +55,7 @@ Keycloak image with the plugin, and the server needs nothing but Docker.
 
 ```bash
 # 1. Download the release and verify it (or build it yourself: ./mvnw -DskipITs package)
-V=0.1.0
+V=0.1.1
 curl -fLO https://github.com/shebang-labs/scim-outbound-for-keycloak/releases/download/v$V/scim-outbound-for-keycloak-$V.jar
 curl -fLO https://github.com/shebang-labs/scim-outbound-for-keycloak/releases/download/v$V/scim-outbound-for-keycloak-$V.jar.sha256
 sha256sum -c scim-outbound-for-keycloak-$V.jar.sha256

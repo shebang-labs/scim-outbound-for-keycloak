@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-11-15
+
 ### Added
 
 - Docker example (`examples/docker`): a Dockerfile that builds Keycloak with the plugin from the
@@ -60,5 +62,6 @@ First release.
 - Micrometer metrics.
 - Docker-compose demo, documentation, CI, CodeQL, SBOM and release pipeline.
 
-[Unreleased]: https://github.com/shebang-labs/scim-outbound-for-keycloak/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/shebang-labs/scim-outbound-for-keycloak/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/shebang-labs/scim-outbound-for-keycloak/releases/tag/v0.1.1
 [0.1.0]: https://github.com/shebang-labs/scim-outbound-for-keycloak/releases/tag/v0.1.0
