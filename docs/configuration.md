@@ -122,7 +122,7 @@ operation structure"). `AUTO` also works there, but sends a PATCH that fails bef
 ```json
 {
   "name": "1password",
-  "baseUrl": "https://scim.example.com/scim/v2",
+  "baseUrl": "https://scim.example.com",
   "auth": { "type": "BEARER", "token": "${vault.scim-1password-token}" },
   "deprovision": "DEACTIVATE",
   "syncGroups": true,
@@ -130,6 +130,9 @@ operation structure"). `AUTO` also works there, but sends a PATCH that fails bef
   "userUpdateMode": "PUT"
 }
 ```
+
+The 1Password SCIM Bridge serves SCIM at the root of its host: use `https://<bridge host>` as
+`baseUrl`, without `/scim/v2` (that path answers `404`).
 
 A merged `PUT` costs one extra `GET` per update. Between the read and the write, a change made
 on the target itself can be overwritten.
