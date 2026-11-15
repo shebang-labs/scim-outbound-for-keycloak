@@ -7,7 +7,7 @@ does not match the published one.
 
 | File | Purpose |
 |------|---------|
-| `Dockerfile` | Keycloak 26.8.1 + plugin 0.1.0, built with `kc.sh build` and started with `start --optimized`. |
+| `Dockerfile` | Keycloak 26.8.1 + plugin 0.1.1, built with `kc.sh build` and started with `start --optimized`. |
 | `compose.yml` | That image with PostgreSQL, a files vault and the plugin's server options. |
 | `.env.example` | The values `compose.yml` needs. Copy it to `.env`. |
 
@@ -65,8 +65,8 @@ Build the image where GitHub is reachable (a workstation or CI), push it to your
 pull it on the server:
 
 ```bash
-docker build -t registry.example.com/keycloak-scim:26.8.1-0.1.0 .
-docker push registry.example.com/keycloak-scim:26.8.1-0.1.0
+docker build -t registry.example.com/keycloak-scim:26.8.1-0.1.1 .
+docker push registry.example.com/keycloak-scim:26.8.1-0.1.1
 ```
 
 In `compose.yml`, set `image:` to that name and remove the `build:` line.
