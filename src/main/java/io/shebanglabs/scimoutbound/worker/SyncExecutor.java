@@ -4,8 +4,11 @@
  */
 package io.shebanglabs.scimoutbound.worker;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.shebanglabs.scimoutbound.config.DeprovisionMode;
 import io.shebanglabs.scimoutbound.config.TargetConfig;
+import io.shebanglabs.scimoutbound.config.UserUpdateMode;
 import io.shebanglabs.scimoutbound.http.Outcome;
 import io.shebanglabs.scimoutbound.http.ScimClient;
 import io.shebanglabs.scimoutbound.http.ScimException;
@@ -27,7 +30,10 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.UnaryOperator;
 import java.util.stream.Collectors;
+import org.jboss.logging.Logger;
 
 /**
  * Applies one outbox operation to a SCIM target (design report section 5.4). It runs outside any
@@ -42,9 +48,15 @@ public class SyncExecutor {
     /** Most member changes sent in one request; AWS IAM Identity Center allows no more. */
     static final int MEMBER_CHUNK = 100;
 
+    private static final Logger LOG = Logger.getLogger(SyncExecutor.class);
+
+    /** Targets already warned about a PATCH fallback, so the warning is logged once per target and node. */
+    private static final Set<String> WARNED_FALLBACK = ConcurrentHashMap.newKeySet();
+
     private final ScimClient client;
     private final TargetConfig config;
     private final boolean patchSupported;
+    private final UserUpdateMode userUpdateMode;
     private final UserMapper mapper;
     private final List<MappingChange> changes = new ArrayList<>();
 
@@ -52,6 +64,7 @@ public class SyncExecutor {
         this.client = client;
         this.config = config;
         this.patchSupported = patchSupported;
+        this.userUpdateMode = config.userUpdateModeOrDefault();
         this.mapper = new UserMapper(config);
     }
 
@@ -117,12 +130,17 @@ public class SyncExecutor {
         throw failure("user create", created);
     }
 
+    /**
+     * Takes over an account found on the target. The link is recorded only once the account has
+     * been updated: an account we could not update is not ours yet, and a link to it would make
+     * later deprovisioning act on an account whose data never came from Keycloak.
+     */
     private String linkAndUpdate(UserState user, String remoteId) throws ScimException {
-        link(ResourceType.USER, user.userId(), remoteId);
         ScimResponse response = updateUser(remoteId, user.desired());
         if (!response.isSuccess()) {
             throw failure("user update after link", response);
         }
+        link(ResourceType.USER, user.userId(), remoteId);
         afterUserLinked(user, remoteId);
         return remoteId;
     }
@@ -142,20 +160,91 @@ public class SyncExecutor {
         }
     }
 
+    /**
+     * Updates a user as {@link TargetConfig#userUpdateMode()} says. In {@code AUTO} mode a server
+     * that advertises PATCH gets a PATCH, and a 400 answer is retried once as a PUT, because some
+     * servers (the 1Password SCIM Bridge) advertise PATCH but reject the path form on users.
+     * Other errors are returned as they are: a PUT would fail for the same reason.
+     */
     private ScimResponse updateUser(String remoteId, ScimUser desired) throws ScimException {
-        return patchSupported
-                ? client.patchUser(remoteId, mapper.toReplacePatch(desired))
-                : client.replaceUser(remoteId, desired);
+        return switch (userUpdateMode) {
+            case PUT -> mergeAndPut(remoteId, remote -> mapper.mergeForPut(remote, remoteId, desired));
+            case PATCH -> client.patchUser(remoteId, mapper.toReplacePatch(desired));
+            case AUTO -> {
+                if (!patchSupported) {
+                    yield client.replaceUser(remoteId, desired);
+                }
+                ScimResponse patched = client.patchUser(remoteId, mapper.toReplacePatch(desired));
+                yield patched.status() == 400
+                        ? fallBackToPut("user update", patched,
+                                remote -> mapper.mergeForPut(remote, remoteId, desired), remoteId)
+                        : patched;
+            }
+        };
+    }
+
+    private ScimResponse deactivateUser(String remoteId) throws ScimException {
+        UnaryOperator<ObjectNode> inactive = remote -> UserMapper.withActive(remote, remoteId, false);
+        return switch (userUpdateMode) {
+            case PUT -> mergeAndPut(remoteId, inactive);
+            case PATCH -> client.patchUser(remoteId, ScimPatchOp.builder().replace("active", false).build());
+            case AUTO -> {
+                if (!patchSupported) {
+                    yield deactivateWithPut(remoteId);
+                }
+                ScimResponse patched = client.patchUser(remoteId,
+                        ScimPatchOp.builder().replace("active", false).build());
+                yield patched.status() == 400 ? fallBackToPut("user deactivation", patched, inactive, remoteId)
+                        : patched;
+            }
+        };
+    }
+
+    /**
+     * Retries a user PATCH that was answered with 400 as a PUT. When the PUT (or the read before
+     * it) fails too, the error names both answers. A 404 at that point is reported, not taken as
+     * "the user is gone": the PATCH did find the user, so re-creating it would be wrong. The
+     * warning names the target only: the server's answer can quote personal data, so it stays in
+     * the outbox row.
+     */
+    private ScimResponse fallBackToPut(String action, ScimResponse patched, UnaryOperator<ObjectNode> merge,
+            String remoteId) throws ScimException {
+        if (WARNED_FALLBACK.add(config.name())) {
+            LOG.warnf("scim-outbound: target %s rejected a user PATCH with HTTP 400; retrying users with PUT."
+                    + " Set \"userUpdateMode\": \"PUT\" on the target to skip the PATCH attempt.", config.name());
+        } else {
+            LOG.debugf("scim-outbound: target %s rejected a user PATCH with HTTP 400; retrying with PUT",
+                    config.name());
+        }
+        ScimResponse put = mergeAndPut(remoteId, merge);
+        if (put.isSuccess()) {
+            return put;
+        }
+        throw new ScimException(action + " failed: PATCH answered " + patched.errorSummary()
+                + ", then the PUT fallback got " + put.errorSummary(), put);
+    }
+
+    /**
+     * Reads the user from the target, lets {@code merge} change it and sends it back with PUT.
+     * Working on the JSON keeps attributes this plugin does not model. A failed read is returned
+     * as is, so a 404 is handled like a 404 on the update itself.
+     */
+    private ScimResponse mergeAndPut(String remoteId, UnaryOperator<ObjectNode> merge) throws ScimException {
+        ScimResponse current = client.getUser(remoteId);
+        if (!current.isSuccess()) {
+            return current;
+        }
+        ObjectNode remote = objectFrom(current)
+                .orElseThrow(() -> permanent("could not read the user from the target to update it with PUT"));
+        return client.replaceUser(remoteId, merge.apply(remote));
     }
 
     private void deprovision(String userId, String remoteId, boolean userDeleted) throws ScimException {
         ScimResponse response;
         if (config.deprovisionOrDefault() == DeprovisionMode.DELETE) {
             response = client.deleteUser(remoteId);
-        } else if (patchSupported) {
-            response = client.patchUser(remoteId, ScimPatchOp.builder().replace("active", false).build());
         } else {
-            response = deactivateWithPut(remoteId);
+            response = deactivateUser(remoteId);
         }
         if (!response.isSuccess() && response.outcome() != Outcome.NOT_FOUND) {
             throw failure("user deprovision", response);
@@ -468,6 +557,18 @@ public class SyncExecutor {
         }
         try {
             return Optional.ofNullable(ScimJson.read(response.body(), type));
+        } catch (IOException e) {
+            return Optional.empty();
+        }
+    }
+
+    private static Optional<ObjectNode> objectFrom(ScimResponse response) {
+        if (response.body() == null || response.body().isBlank()) {
+            return Optional.empty();
+        }
+        try {
+            JsonNode node = ScimJson.mapper().readTree(response.body());
+            return node instanceof ObjectNode object ? Optional.of(object) : Optional.empty();
         } catch (IOException e) {
             return Optional.empty();
         }

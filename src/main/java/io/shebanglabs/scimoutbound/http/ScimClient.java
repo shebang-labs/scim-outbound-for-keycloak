@@ -5,6 +5,7 @@
 package io.shebanglabs.scimoutbound.http;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.shebanglabs.scimoutbound.auth.AuthenticationException;
 import io.shebanglabs.scimoutbound.auth.Authenticator;
 import io.shebanglabs.scimoutbound.scim.ScimGroup;
@@ -76,6 +77,11 @@ public class ScimClient {
 
     public ScimResponse replaceUser(String id, ScimUser user) throws ScimException {
         return call("PUT", "/Users/" + encodePath(id), ScimJson.write(user.withId(id)));
+    }
+
+    /** PUT of a user given as JSON, for users read from the target and merged with ours. */
+    public ScimResponse replaceUser(String id, ObjectNode user) throws ScimException {
+        return call("PUT", "/Users/" + encodePath(id), ScimJson.write(user));
     }
 
     public ScimResponse patchUser(String id, ScimPatchOp patch) throws ScimException {

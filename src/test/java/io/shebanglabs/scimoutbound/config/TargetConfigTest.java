@@ -16,7 +16,7 @@ class TargetConfigTest {
     private static final TargetConfig OAUTH = new TargetConfig("app", null, "https://a.example.com/scim",
             new TargetConfig.Auth(AuthType.OAUTH2_CLIENT_CREDENTIALS, null, null, null,
                     "https://a.example.com/token", "kc", "${vault.secret}", "scim.write"),
-            null, null, null, null, null, null, null);
+            null, null, null, null, null, null, null, null);
 
     @Test
     void defaultsMatchSecureDesign() {
@@ -51,14 +51,14 @@ class TargetConfigTest {
         TargetConfig.Auth a = OAUTH.masked().auth();
         TargetConfig movedBase = new TargetConfig("app", null, "https://evil.example.net/scim",
                 new TargetConfig.Auth(AuthType.BEARER, TargetConfig.SECRET_MASK, null, null, null, null, null, null),
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
         TargetConfig movedTokenUrl = new TargetConfig("app", null, OAUTH.baseUrl(),
                 new TargetConfig.Auth(a.type(), null, null, null, "https://evil.example.net/token", a.clientId(),
                         a.clientSecret(), null),
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
         TargetConfig bearer = new TargetConfig("app", null, OAUTH.baseUrl(),
                 new TargetConfig.Auth(AuthType.BEARER, "${vault.scim-old}", null, null, null, null, null, null),
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
 
         assertThatThrownBy(() -> movedBase.keepMaskedSecretsFrom(bearer))
                 .isInstanceOf(InvalidConfigurationException.class).hasMessageContaining("auth.token");
@@ -70,10 +70,10 @@ class TargetConfigTest {
     void maskedSecretIsKeptWhenOnlyThePathChanges() {
         TargetConfig bearer = new TargetConfig("app", null, "https://a.example.com/scim",
                 new TargetConfig.Auth(AuthType.BEARER, "${vault.scim-old}", null, null, null, null, null, null),
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
         TargetConfig edited = new TargetConfig("app", null, "https://A.example.com:443/scim/v2",
                 new TargetConfig.Auth(AuthType.BEARER, TargetConfig.SECRET_MASK, null, null, null, null, null, null),
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
 
         assertThat(edited.keepMaskedSecretsFrom(bearer).auth().token()).isEqualTo("${vault.scim-old}");
     }
@@ -83,7 +83,7 @@ class TargetConfigTest {
         TargetConfig.Auth a = OAUTH.auth();
         TargetConfig edited = new TargetConfig("app", null, OAUTH.baseUrl(),
                 new TargetConfig.Auth(a.type(), null, null, null, a.tokenUrl(), a.clientId(), "${vault.new}", null),
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
 
         assertThat(edited.keepMaskedSecretsFrom(OAUTH).auth().clientSecret()).isEqualTo("${vault.new}");
     }
@@ -93,5 +93,29 @@ class TargetConfigTest {
         TargetConfig parsed = ScimJson.read(ScimJson.write(OAUTH), TargetConfig.class);
 
         assertThat(parsed).isEqualTo(OAUTH);
+    }
+
+    @Test
+    void userUpdateModeDefaultsToAutoAndRoundTrips() throws IOException {
+        assertThat(OAUTH.userUpdateModeOrDefault()).isEqualTo(UserUpdateMode.AUTO);
+        assertThat(ScimJson.write(OAUTH)).doesNotContain("userUpdateMode");
+
+        TargetConfig put = TargetConfig.fromJson("{\"name\":\"op\",\"userUpdateMode\":\"PUT\"}");
+
+        assertThat(put.userUpdateModeOrDefault()).isEqualTo(UserUpdateMode.PUT);
+        assertThat(ScimJson.write(put.masked())).contains("\"userUpdateMode\":\"PUT\"");
+        assertThat(ScimJson.read(ScimJson.write(put), TargetConfig.class).userUpdateMode())
+                .isEqualTo(UserUpdateMode.PUT);
+    }
+
+    @Test
+    void invalidEnumValueNamesFieldAndChoicesButNotTheValue() {
+        assertThatThrownBy(() -> TargetConfig.fromJson("{\"name\":\"op\",\"userUpdateMode\":\"s3cr3t\"}"))
+                .isInstanceOf(InvalidConfigurationException.class)
+                .hasMessage("userUpdateMode must be one of [AUTO, PATCH, PUT]")
+                .hasMessageNotContaining("s3cr3t");
+        assertThatThrownBy(() -> TargetConfig.fromJson("{\"name\":"))
+                .isInstanceOf(InvalidConfigurationException.class)
+                .hasMessage("request body is not a valid target configuration");
     }
 }

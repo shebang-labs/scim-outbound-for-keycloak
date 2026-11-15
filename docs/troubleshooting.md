@@ -36,6 +36,8 @@ kc.sh start --log-level=INFO,io.shebanglabs.scimoutbound:debug
 | `lastError` | Likely cause and fix |
 |-------------|----------------------|
 | `HTTP 400 ...` | The application rejects the payload (required attribute missing, unsupported attribute). Check `customAttributes` and the application's SCIM schema. |
+| `user update ... failed: HTTP 400` with "operation did not fit expected field operation structure" | The server (1Password SCIM Bridge) rejects the `path` form of PATCH on users. Set `"userUpdateMode": "PUT"` on the target, then retry the failed rows. See [How users are updated](configuration.md#how-users-are-updated). |
+| `... PATCH answered HTTP 400 ..., then the PUT fallback got ...` | `AUTO` mode retried a rejected PATCH as PUT and that failed too, so the payload itself is the problem (see `HTTP 400` above). |
 | `HTTP 401` / `authentication failed` | Wrong or revoked token; the vault entry is missing (`not available (check the vault entry)`). |
 | `HTTP 403` | The SCIM token lacks permissions in the application. |
 | `server reported a conflict but no user with this userName was found` | The application enforces uniqueness on another attribute (often email). Clean up the duplicate in the application. |

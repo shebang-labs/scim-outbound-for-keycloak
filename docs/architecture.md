@@ -94,9 +94,10 @@ PENDING ──newer change for the same object──► SUPERSEDED
 |-----------|-----------|
 | Unknown user | `GET /Users?filter=userName eq "..."`; if found, link under the same rule as a `409`, otherwise `POST` |
 | `409` on create | look up by `userName`; link and update only if its `externalId` is the Keycloak ID (or `linkExistingAccounts` is on), otherwise fail and leave it untouched |
-| Known user | `PATCH` with `replace` operations (or `PUT` if `/ServiceProviderConfig` says PATCH is unsupported) |
+| Known user | `PATCH` with `replace` operations (or `PUT` if `/ServiceProviderConfig` says PATCH is unsupported); a `400` on the PATCH is retried once as a merged `PUT` (read, merge, write). `userUpdateMode` forces `PATCH` or merged `PUT` |
+| Existing account taken over | linked only after its update succeeded; a failed update leaves no link behind |
 | `404` on update | unlink, look up, re-create |
-| Deprovision | `PATCH active=false` (default) or `DELETE`; `404` counts as success |
+| Deprovision | `PATCH active=false` (default) or `DELETE`; `404` counts as success. Deactivation follows `userUpdateMode` like updates do |
 | User leaves the target's scope | deprovisioned, link kept (deactivate mode) so re-entry reactivates the same account |
 | Groups | `displayName` = group name, `externalId` = group id. Members are added and removed with PATCH, at most 100 per request (also when a group is created); removal lists the members as the `value` of a `members` removal and falls back to `members[value eq "id"]` if the server rejects that. A full member sync reads the group and sends only the differences: never "replace members" or "remove all members", which some servers reject. A server that does not return members on the group (AWS IAM Identity Center) gets the additions, and its stray members are found by listing users with `groups.value eq "<group id>"`. That listing is only trusted after the same question about a group that cannot exist returns nobody, so a server that ignores the filter never gets all its users removed; without a usable filter, departures reach it through their own membership events only. |
 | `401` | credentials refreshed once (OAuth), then retried once; a second 401 is reported |

@@ -26,8 +26,8 @@ are switched off everywhere when someone leaves.
   or breaks logins or admin actions.**
 - **Correct SCIM**: look up before create, 409 becomes a link to the account the plugin created
   (never a takeover of someone else's account, unless allowed), PATCH with PUT fallback
-  (discovered through `/ServiceProviderConfig`), 404 handling, idempotent retries, per-object
-  ordering and coalescing of rapid edits.
+  (discovered through `/ServiceProviderConfig`, or forced per target with `userUpdateMode`),
+  404 handling, idempotent retries, per-object ordering and coalescing of rapid edits.
 - **Reconciliation**: scheduled, cluster-safe comparison that provisions existing users and repairs
   drift, with a **dry run** and a **mass-removal safety brake**.
 - **Failed-operation tracking** with manual retry through the admin REST API.
